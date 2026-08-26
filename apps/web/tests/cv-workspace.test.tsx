@@ -255,6 +255,7 @@ describe("CvExtractionControl warning state", () => {
     render(<CvWorkspace />);
 
     expect(await screen.findByText(/could not find readable text/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Prepared CV")).toBeDisabled();
     expect(screen.queryByText("Private CV content")).not.toBeInTheDocument();
   });
 });

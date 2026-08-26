@@ -81,7 +81,10 @@ export function AnalysisWorkspace({
   const [analysis, setAnalysis] = useState<MatchAnalysis | null>(null);
 
   const preparedDocuments = useMemo(
-    () => documents.filter((document) => extractions[document.latestVersion.id]?.status === "succeeded"),
+    () => documents.filter((document) => {
+      const extraction = extractions[document.latestVersion.id];
+      return extraction?.status === "succeeded" && extraction.quality === "usable";
+    }),
     [documents, extractions],
   );
 
@@ -191,7 +194,7 @@ export function AnalysisWorkspace({
               ))}
             </select>
             {!isDocumentsLoading && preparedDocuments.length === 0 ? (
-              <p className="mt-2 text-sm leading-6 text-ink-muted">Prepare one saved CV first. Its private text remains on the server.</p>
+              <p className="mt-2 text-sm leading-6 text-ink-muted">Prepare a CV with readable text first. Its private text remains on the server.</p>
             ) : null}
           </div>
           <div>
