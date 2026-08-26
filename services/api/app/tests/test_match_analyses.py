@@ -142,6 +142,28 @@ def test_match_analysis_requires_a_successful_private_extraction(client: TestCli
     assert error["code"] == "CV_TEXT_NOT_READY"
 
 
+def test_successful_but_unreadable_extraction_cannot_create_analysis(client: TestClient) -> None:
+    register(client, "unreadable@example.com")
+    document = upload_docx(client, "")
+    version = cast(dict[str, object], document["latestVersion"])
+    extraction_response = client.post(
+        f"/api/v1/cv-documents/{document['id']}/versions/{version['id']}/extraction",
+        headers={"X-CSRF-Token": csrf_token(client)},
+    )
+    target = create_job_target(client)
+
+    response = create_analysis(
+        client,
+        cv_document_version_id=str(version["id"]),
+        job_target_id=str(target["id"]),
+    )
+
+    assert extraction_response.status_code == 200
+    assert extraction_response.json()["readiness"]["state"] == "blocked"
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "CV_TEXT_NOT_READY"
+
+
 def test_match_analyses_are_invisible_across_owners(
     client: TestClient,
     second_client: TestClient,

@@ -7,15 +7,20 @@ from fastapi import APIRouter, Header, Request
 from app.api.dependencies import AuthenticatedSessionDependency, DatabaseSession
 from app.core.config import Settings
 from app.models.cv_extraction import CvExtraction
-from app.schemas.extraction import CvExtractionResponse
+from app.schemas.extraction import CvExtractionReadinessResponse, CvExtractionResponse
 from app.services.authentication import CSRF_COOKIE_NAME, require_csrf_token
-from app.services.cv_extraction import extract_owned_version, get_owned_extraction
+from app.services.cv_extraction import derive_readiness, extract_owned_version, get_owned_extraction
 from app.services.object_storage import PrivateObjectStorage
 
 router = APIRouter(tags=["cv extraction"])
 
 
 def extraction_response(extraction: CvExtraction) -> CvExtractionResponse:
+    readiness = derive_readiness(
+        status=extraction.status,
+        quality=extraction.quality,
+        warnings=extraction.warnings,
+    )
     return CvExtractionResponse(
         id=extraction.id,
         status=extraction.status,
@@ -23,7 +28,12 @@ def extraction_response(extraction: CvExtraction) -> CvExtractionResponse:
         character_count=extraction.character_count,
         parser_version=extraction.parser_version,
         quality=extraction.quality,
-        warnings=extraction.warnings,
+        warnings=list(readiness.warnings),
+        readiness=CvExtractionReadinessResponse(
+            state=readiness.state,
+            explanation=readiness.explanation,
+            recovery_guidance=readiness.recovery_guidance,
+        ),
         completed_at=extraction.completed_at,
         failure_message=extraction.failure_message,
     )

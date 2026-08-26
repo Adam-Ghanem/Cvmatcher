@@ -12,6 +12,7 @@ from app.models.cv_extraction import CvExtraction
 from app.models.job_target import JobTarget
 from app.models.match_analysis import MatchAnalysis
 from app.schemas.match_analyses import CreateMatchAnalysisRequest, MatchAnalysisResponse
+from app.services.cv_extraction import derive_readiness
 from app.services.deterministic_scoring import SCORING_VERSION, calculate_deterministic_score
 
 
@@ -53,7 +54,18 @@ class MatchAnalysisService:
         extraction = await database_session.scalar(
             select(CvExtraction).where(CvExtraction.document_version_id == version.id)
         )
-        if extraction is None or extraction.status != "succeeded" or not extraction.extracted_text:
+        if extraction is None:
+            raise ApiException(
+                "CV_TEXT_NOT_READY",
+                "Prepare this CV text before creating an analysis.",
+                409,
+            )
+        readiness = derive_readiness(
+            status=extraction.status,
+            quality=extraction.quality,
+            warnings=extraction.warnings,
+        )
+        if readiness.state == "blocked" or not extraction.extracted_text:
             raise ApiException(
                 "CV_TEXT_NOT_READY",
                 "Prepare this CV text before creating an analysis.",

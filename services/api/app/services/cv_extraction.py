@@ -33,6 +33,7 @@ from app.services.object_storage import (
 PARSER_VERSION: Final = "bounded-text-v2"
 MAX_PDF_PAGES: Final = 100
 MAX_EXTRACTED_CHARACTERS: Final = 250_000
+MINIMUM_RECOMMENDED_EXTRACTED_CHARACTERS: Final = 20
 EXTRACTION_WALL_TIMEOUT_SECONDS: Final = 8.0
 EXTRACTION_CPU_LIMIT_SECONDS: Final = 4
 EXTRACTION_ADDRESS_SPACE_BYTES: Final = 256 * 1024 * 1024
@@ -41,6 +42,17 @@ _WORKER_SHUTDOWN_GRACE_SECONDS: Final = 0.25
 SAFE_FAILURE_MESSAGE: Final = (
     "We could not read this CV. Upload a different PDF or DOCX and try again."
 )
+_ALLOWED_WARNING_CODES: Final = ("NO_EXTRACTABLE_TEXT", "LIMITED_EXTRACTABLE_TEXT")
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractionReadiness:
+    """Safe user-facing readiness derived solely from stored extraction metadata."""
+
+    state: str
+    explanation: str
+    recovery_guidance: str | None
+    warnings: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +65,45 @@ class ExtractionQualityAssessment:
     warnings: tuple[str, ...]
 
 
+def derive_readiness(
+    *,
+    status: str,
+    quality: str,
+    warnings: list[str],
+) -> ExtractionReadiness:
+    safe_warnings = tuple(code for code in _ALLOWED_WARNING_CODES if code in warnings)
+    if (
+        status != "succeeded"
+        or quality not in {"usable", "limited"}
+        or "NO_EXTRACTABLE_TEXT" in safe_warnings
+    ):
+        return ExtractionReadiness(
+            state="blocked",
+            explanation=(
+                "This document is not ready for comparison because we could not find enough "
+                "readable content."
+            ),
+            recovery_guidance=(
+                "Upload a text-based PDF or DOCX rather than a scanned or image-only "
+                "document."
+            ),
+            warnings=safe_warnings,
+        )
+    if quality == "limited" or safe_warnings:
+        return ExtractionReadiness(
+            state="warning",
+            explanation="This document can be compared, but the available content may be limited.",
+            recovery_guidance="For more complete results, upload a fuller text-based PDF or DOCX.",
+            warnings=safe_warnings,
+        )
+    return ExtractionReadiness(
+        state="ready",
+        explanation="This document is ready for deterministic comparison.",
+        recovery_guidance=None,
+        warnings=(),
+    )
+
+
 def assess_extracted_text(text: str) -> ExtractionQualityAssessment:
     line_count = len(text.splitlines())
     if not text.strip():
@@ -62,8 +113,16 @@ def assess_extracted_text(text: str) -> ExtractionQualityAssessment:
             quality="low",
             warnings=("NO_EXTRACTABLE_TEXT",),
         )
+    character_count = len(text)
+    if character_count < MINIMUM_RECOMMENDED_EXTRACTED_CHARACTERS:
+        return ExtractionQualityAssessment(
+            character_count=character_count,
+            line_count=line_count,
+            quality="limited",
+            warnings=("LIMITED_EXTRACTABLE_TEXT",),
+        )
     return ExtractionQualityAssessment(
-        character_count=len(text),
+        character_count=character_count,
         line_count=line_count,
         quality="usable",
         warnings=(),

@@ -72,12 +72,22 @@ Both routes return safe extraction metadata only:
   "status": "succeeded",
   "sourceType": "pdf",
   "characterCount": 14218,
+  "parserVersion": "bounded-text-v2",
+  "quality": "usable",
+  "warnings": [],
+  "readiness": {
+    "state": "ready",
+    "explanation": "This document is ready for deterministic comparison.",
+    "recoveryGuidance": null
+  },
   "completedAt": "2026-08-26T00:00:00Z",
   "failureMessage": null
 }
 ```
 
-`status` is one of `pending`, `processing`, `succeeded`, or `failed`. No response contains extracted text, a private storage key, raw document bytes, parser diagnostics, or an internal stack trace. A missing, unowned, or not-yet-created extraction uses the shared `404 RESOURCE_NOT_FOUND` envelope.
+`status` is one of `pending`, `processing`, `succeeded`, or `failed`. `quality` is authoritative extraction metadata (`unknown`, `low`, `limited`, or `usable`); the nested `readiness` object is derived deterministically from that metadata and is never persisted separately. `readiness.state` is `ready`, `warning`, or `blocked`. Ready and warning records can be selected for deterministic comparison; warning records return concise recovery guidance because their readable content is limited. Blocked records cannot be analyzed. `warnings` contains only bounded, allowlisted identifiers; the current values are `NO_EXTRACTABLE_TEXT` and `LIMITED_EXTRACTABLE_TEXT`.
+
+No response contains extracted text, a private storage key, raw document bytes, parser diagnostics, or an internal stack trace. A missing, unowned, or not-yet-created extraction uses the shared `404 RESOURCE_NOT_FOUND` envelope.
 
 ## Target-role routes
 
@@ -152,7 +162,7 @@ A successful response returns metadata-only, bounded analysis evidence. It does 
 
 Component `state` is one of `MATCHED`, `PARTIAL`, `EVIDENCE_NOT_FOUND`, or `NOT_APPLICABLE`. Gap state is always `NOT_FOUND_IN_PROVIDED_CV`; it means evidence was not found in the submitted CV text, not that the person lacks the skill or credential. `overallScore` and every component score are integers in the inclusive `0`–`100` range. The score is an explainable planning aid, not a hiring or interview prediction.
 
-`POST /match-analyses` returns `409 CV_TEXT_NOT_READY` when the selected owned version has no successful non-empty private extraction. It returns `404 RESOURCE_NOT_FOUND` for absent or inaccessible CV versions, targets, and analysis IDs. Repeating the same owned CV version, target role, and scoring version returns the existing persisted result rather than creating a duplicate.
+`POST /match-analyses` returns `409 CV_TEXT_NOT_READY` when the selected owned version has no analysis-eligible private extraction, including a readiness state of `blocked`. It returns `404 RESOURCE_NOT_FOUND` for absent or inaccessible CV versions, targets, and analysis IDs. Repeating the same owned CV version, target role, and scoring version returns the existing persisted result rather than creating a duplicate.
 
 ## Deliberate boundaries
 

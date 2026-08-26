@@ -51,13 +51,29 @@ describe("apiFetch", () => {
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: "extraction-id", status: "processing" }), {
+        new Response(JSON.stringify({
+          id: "extraction-id",
+          status: "processing",
+          readiness: {
+            state: "blocked",
+            explanation: "This document is not ready for comparison because we could not find enough readable content.",
+            recoveryGuidance: "Upload a text-based PDF or DOCX rather than a scanned or image-only document.",
+          },
+        }), {
           headers: { "content-type": "application/json" },
           status: 200,
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: "extraction-id", status: "succeeded" }), {
+        new Response(JSON.stringify({
+          id: "extraction-id",
+          status: "succeeded",
+          readiness: {
+            state: "ready",
+            explanation: "This document is ready for deterministic comparison.",
+            recoveryGuidance: null,
+          },
+        }), {
           headers: { "content-type": "application/json" },
           status: 200,
         }),
@@ -72,6 +88,12 @@ describe("apiFetch", () => {
     expect(createInit.method).toBe("POST");
     expect(createInit.headers).toMatchObject({ "X-CSRF-Token": "csrf-token" });
     expect(extraction.status).toBe("succeeded");
+    expect(extraction.readiness).toEqual({
+      state: "ready",
+      explanation: "This document is ready for deterministic comparison.",
+      recoveryGuidance: null,
+    });
+    expect(JSON.stringify(extraction)).not.toContain("Private CV content");
   });
 
   it("uses protected API contracts to save and list target roles without returning job text", async () => {

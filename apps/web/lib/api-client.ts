@@ -89,6 +89,14 @@ export interface MatchAnalysis {
 }
 
 export type CvExtractionStatus = "pending" | "processing" | "succeeded" | "failed";
+export type CvExtractionQuality = "unknown" | "low" | "limited" | "usable";
+export type CvReadinessState = "ready" | "warning" | "blocked";
+
+export interface CvExtractionReadiness {
+  state: CvReadinessState;
+  explanation: string;
+  recoveryGuidance: string | null;
+}
 
 export interface CvExtraction {
   id: string;
@@ -96,8 +104,9 @@ export interface CvExtraction {
   sourceType: "pdf" | "docx";
   characterCount: number;
   parserVersion: string;
-  quality: "unknown" | "low" | "usable";
+  quality: CvExtractionQuality;
   warnings: string[];
+  readiness: CvExtractionReadiness;
   completedAt: string | null;
   failureMessage: string | null;
 }

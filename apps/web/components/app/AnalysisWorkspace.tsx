@@ -80,13 +80,23 @@ export function AnalysisWorkspace({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [analysis, setAnalysis] = useState<MatchAnalysis | null>(null);
 
-  const preparedDocuments = useMemo(
+  const analyzableDocuments = useMemo(
     () => documents.filter((document) => {
       const extraction = extractions[document.latestVersion.id];
-      return extraction?.status === "succeeded" && extraction.quality === "usable";
+      return extraction?.readiness.state === "ready" || extraction?.readiness.state === "warning";
     }),
     [documents, extractions],
   );
+  const blockedRecoveryGuidance = useMemo(
+    () => documents
+      .map((document) => extractions[document.latestVersion.id])
+      .find((extraction) => extraction?.readiness.state === "blocked")
+      ?.readiness.recoveryGuidance,
+    [documents, extractions],
+  );
+  const selectedExtraction = selectedVersionId ? extractions[selectedVersionId] : null;
+  const selectedCvIsEligible =
+    selectedExtraction?.readiness.state === "ready" || selectedExtraction?.readiness.state === "warning";
 
   async function loadTargets() {
     setIsLoadingTargets(true);
@@ -135,8 +145,8 @@ export function AnalysisWorkspace({
 
   async function submitAnalysis(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedVersionId || !selectedTargetId) {
-      setSubmissionError("Choose one prepared CV and one saved target role before creating a match.");
+    if (!selectedVersionId || !selectedTargetId || !selectedCvIsEligible) {
+      setSubmissionError("Choose one CV that is ready for comparison and one saved target role before creating a match.");
       return;
     }
 
@@ -160,7 +170,9 @@ export function AnalysisWorkspace({
     }
   }
 
-  const canSubmit = preparedDocuments.length > 0 && targets.length > 0 && !isSubmitting;
+  const canSubmit = Boolean(
+    selectedVersionId && selectedTargetId && selectedCvIsEligible && !isSubmitting,
+  );
 
   return (
     <section className="mt-10 border-t border-line pt-10" aria-labelledby="analysis-heading">
@@ -180,21 +192,28 @@ export function AnalysisWorkspace({
             <label className="block text-sm font-semibold" htmlFor="analysis-cv-version">Prepared CV</label>
             <select
               className="mt-2 w-full rounded-sm border border-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-surface-subtle"
-              disabled={isDocumentsLoading || preparedDocuments.length === 0}
+              disabled={isDocumentsLoading || analyzableDocuments.length === 0}
               id="analysis-cv-version"
               onChange={(event) => setSelectedVersionId(event.target.value)}
               required
               value={selectedVersionId}
             >
-              <option value="">{isDocumentsLoading ? "Checking CV preparation…" : "Choose a prepared CV"}</option>
-              {preparedDocuments.map((document) => (
+              <option value="">{isDocumentsLoading ? "Checking CV preparation…" : "Choose a CV ready for comparison"}</option>
+              {analyzableDocuments.map((document) => (
                 <option key={document.latestVersion.id} value={document.latestVersion.id}>
                   {document.title} · Version {document.latestVersion.versionNumber}
                 </option>
               ))}
             </select>
-            {!isDocumentsLoading && preparedDocuments.length === 0 ? (
-              <p className="mt-2 text-sm leading-6 text-ink-muted">Prepare a CV with readable text first. Its private text remains on the server.</p>
+            {!isDocumentsLoading && analyzableDocuments.length === 0 ? (
+              <p className="mt-2 text-sm leading-6 text-ink-muted">
+                {blockedRecoveryGuidance ?? "Prepare a CV with readable content first. Its private content remains on the server."}
+              </p>
+            ) : null}
+            {selectedExtraction?.readiness.state === "warning" ? (
+              <p className="mt-2 rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900" role="status">
+                {selectedExtraction.readiness.explanation} {selectedExtraction.readiness.recoveryGuidance}
+              </p>
             ) : null}
           </div>
           <div>

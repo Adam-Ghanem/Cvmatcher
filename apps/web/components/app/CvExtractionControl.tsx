@@ -12,8 +12,14 @@ function statusLabel(extraction: CvExtraction | null | undefined): string {
   if (!extraction) {
     return "Not prepared";
   }
-  if (extraction.status === "succeeded") {
-    return "Text prepared";
+  if (extraction.readiness.state === "ready") {
+    return "Ready";
+  }
+  if (extraction.readiness.state === "warning") {
+    return "Ready with limitations";
+  }
+  if (extraction.readiness.state === "blocked") {
+    return "Blocked";
   }
   if (extraction.status === "failed") {
     return "Preparation needs attention";
@@ -25,13 +31,23 @@ function statusDescription(extraction: CvExtraction | null | undefined): string 
   if (!extraction) {
     return "Create a private text-only working copy. Private text is kept on the server and is not shown here.";
   }
-  if (extraction.status === "succeeded") {
-    return "A private working copy is ready for a future career analysis. CV text remains server-only.";
+  if (extraction.status === "pending" || extraction.status === "processing") {
+    return "CVMatcher is preparing private text from this version. Keep this page open.";
   }
-  if (extraction.status === "failed") {
-    return extraction.failureMessage ?? "We could not prepare this CV. Try again or upload another file.";
+  return extraction.readiness.explanation;
+}
+
+function readinessBadgeClass(extraction: CvExtraction | null | undefined): string | null {
+  if (extraction?.readiness.state === "ready") {
+    return "bg-emerald-50 text-success";
   }
-  return "CVMatcher is preparing private text from this version. Keep this page open.";
+  if (extraction?.readiness.state === "warning") {
+    return "bg-amber-50 text-amber-900";
+  }
+  if (extraction?.readiness.state === "blocked") {
+    return "bg-red-50 text-danger";
+  }
+  return null;
 }
 
 export function CvExtractionControl({
@@ -41,9 +57,10 @@ export function CvExtractionControl({
   statusError,
   onStart,
 }: CvExtractionControlProps) {
-  const isPrepared = extraction?.status === "succeeded";
   const isPreparing = isStarting || extraction?.status === "pending" || extraction?.status === "processing";
-  const needsRetry = extraction?.status === "failed";
+  const canStartPreparation = !extraction || extraction.status === "failed";
+  const badgeClass = readinessBadgeClass(extraction);
+  const recoveryGuidance = extraction?.readiness.recoveryGuidance;
 
   return (
     <section
@@ -52,16 +69,16 @@ export function CvExtractionControl({
     >
       <div aria-live="polite" className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-ink">{statusLabel(extraction)}</p>
-        {isPrepared ? (
-          <span className="rounded-sm bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-success">
+        {badgeClass ? (
+          <span className={`rounded-sm px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
             PRIVATE WORKING COPY
           </span>
         ) : null}
       </div>
       <p className="mt-1 max-w-sm text-sm leading-6 text-ink-muted">{statusDescription(extraction)}</p>
-      {extraction?.warnings.includes("NO_EXTRACTABLE_TEXT") ? (
+      {recoveryGuidance ? (
         <p className="mt-3 rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900" role="status">
-          We could not find readable text in this file. Upload a text-based PDF or DOCX to use it for comparison.
+          {recoveryGuidance}
         </p>
       ) : null}
       {statusError ? (
@@ -69,14 +86,14 @@ export function CvExtractionControl({
           {statusError}
         </p>
       ) : null}
-      {!isPrepared ? (
+      {canStartPreparation ? (
         <button
           className="mt-3 rounded-sm border border-brand px-3 py-2 text-sm font-semibold text-brand transition hover:bg-brand hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isPreparing}
           onClick={() => onStart(document)}
           type="button"
         >
-          {isPreparing ? "Preparing CV text…" : needsRetry ? "Try preparation again" : "Prepare CV text"}
+          {isPreparing ? "Preparing CV text…" : extraction?.status === "failed" ? "Try preparation again" : "Prepare CV text"}
         </button>
       ) : null}
     </section>

@@ -245,7 +245,8 @@ def test_extraction_quality_assessment_warns_when_document_contains_no_extractab
 
 def test_successful_extraction_returns_safe_parser_and_quality_metadata(client: TestClient) -> None:
     register(client, "metadata@example.com")
-    document = upload_docx(client, "Private CV content")
+    private_content = "Private CV content describing platform engineering experience"
+    document = upload_docx(client, private_content)
     version = cast(dict[str, object], document["latestVersion"])
 
     response = client.post(
@@ -258,4 +259,74 @@ def test_successful_extraction_returns_safe_parser_and_quality_metadata(client: 
     assert body["parserVersion"] == "bounded-text-v2"
     assert body["quality"] == "usable"
     assert body["warnings"] == []
-    assert "Private CV content" not in response.text
+    assert body["readiness"] == {
+        "state": "ready",
+        "explanation": "This document is ready for deterministic comparison.",
+        "recoveryGuidance": None,
+    }
+    assert private_content not in response.text
+
+
+def test_readiness_derivation_distinguishes_ready_warning_and_blocked_documents() -> None:
+    from app.services.cv_extraction import derive_readiness
+
+    ready = derive_readiness(status="succeeded", quality="usable", warnings=[])
+    warning = derive_readiness(
+        status="succeeded",
+        quality="limited",
+        warnings=["LIMITED_EXTRACTABLE_TEXT"],
+    )
+    blocked = derive_readiness(
+        status="succeeded",
+        quality="low",
+        warnings=["NO_EXTRACTABLE_TEXT"],
+    )
+    bounded_warning = derive_readiness(
+        status="succeeded",
+        quality="usable",
+        warnings=["LIMITED_EXTRACTABLE_TEXT", "LIMITED_EXTRACTABLE_TEXT", "UNSAFE_VALUE"],
+    )
+
+    assert ready.state == "ready"
+    assert ready.warnings == ()
+    assert warning.state == "warning"
+    assert warning.warnings == ("LIMITED_EXTRACTABLE_TEXT",)
+    assert blocked.state == "blocked"
+    assert blocked.warnings == ("NO_EXTRACTABLE_TEXT",)
+    assert bounded_warning.state == "warning"
+    assert bounded_warning.warnings == ("LIMITED_EXTRACTABLE_TEXT",)
+    assert "text" not in blocked.explanation.casefold()
+
+
+def test_limited_extraction_returns_warning_readiness_without_private_content(
+    client: TestClient,
+) -> None:
+    register(client, "limited@example.com")
+    private_content = "Brief CV"
+    document = upload_docx(client, private_content)
+    version = cast(dict[str, object], document["latestVersion"])
+
+    response = client.post(
+        f"/api/v1/cv-documents/{document['id']}/versions/{version['id']}/extraction",
+        headers={"X-CSRF-Token": csrf_token(client)},
+    )
+
+    body = cast(dict[str, object], response.json())
+    assert response.status_code == 200
+    assert body["quality"] == "limited"
+    assert body["warnings"] == ["LIMITED_EXTRACTABLE_TEXT"]
+    assert body["readiness"] == {
+        "state": "warning",
+        "explanation": "This document can be compared, but the available content may be limited.",
+        "recoveryGuidance": "For more complete results, upload a fuller text-based PDF or DOCX.",
+    }
+    assert private_content not in response.text
+
+
+def test_assess_extracted_text_marks_short_nonempty_content_as_limited() -> None:
+    from app.services.cv_extraction import assess_extracted_text
+
+    assessment = assess_extracted_text("Brief CV")
+
+    assert assessment.quality == "limited"
+    assert assessment.warnings == ("LIMITED_EXTRACTABLE_TEXT",)

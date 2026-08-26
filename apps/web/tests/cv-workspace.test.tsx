@@ -72,6 +72,11 @@ describe("CvWorkspace", () => {
       parserVersion: "bounded-text-v2",
       quality: "usable",
       warnings: [],
+      readiness: {
+        state: "ready",
+        explanation: "This document is ready for deterministic comparison.",
+        recoveryGuidance: null,
+      },
       completedAt: "2026-08-26T00:00:01Z",
       failureMessage: null,
       id: "extraction-id",
@@ -88,7 +93,7 @@ describe("CvWorkspace", () => {
 
     await waitFor(() => {
       expect(createCvExtraction).toHaveBeenCalledWith("document-id", "version-id");
-      expect(screen.getByText("Text prepared")).toBeInTheDocument();
+      expect(screen.getByText("Ready")).toBeInTheDocument();
     });
   });
 
@@ -113,6 +118,11 @@ describe("CvWorkspace", () => {
       parserVersion: "bounded-text-v2",
       quality: "usable",
       warnings: [],
+      readiness: {
+        state: "ready",
+        explanation: "This document is ready for deterministic comparison.",
+        recoveryGuidance: null,
+      },
       completedAt: "2026-08-26T00:00:01Z",
       failureMessage: null,
       id: "extraction-id",
@@ -171,6 +181,64 @@ describe("CvWorkspace", () => {
     });
     expect(screen.queryByText("Private CV content")).not.toBeInTheDocument();
     expect(screen.queryByText("jobDescription")).not.toBeInTheDocument();
+  });
+
+  it("keeps a CV ready with limitations selectable and explains how to improve the document", async () => {
+    vi.mocked(apiFetch).mockImplementation((path) => {
+      if (path === "/api/v1/auth/me") {
+        return Promise.resolve({
+          user: {
+            createdAt: "2026-08-26T00:00:00Z",
+            email: "candidate@example.com",
+            id: "user-id",
+          },
+        });
+      }
+      if (path === "/api/v1/cv-documents") {
+        return Promise.resolve({ data: [document] });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    vi.mocked(getCvExtraction).mockResolvedValue({
+      characterCount: 8,
+      parserVersion: "bounded-text-v2",
+      quality: "limited",
+      warnings: ["LIMITED_EXTRACTABLE_TEXT"],
+      readiness: {
+        state: "warning",
+        explanation: "This document can be compared, but the available content may be limited.",
+        recoveryGuidance: "For more complete results, upload a fuller text-based PDF or DOCX.",
+      },
+      completedAt: "2026-08-26T00:00:01Z",
+      failureMessage: null,
+      id: "extraction-id",
+      sourceType: "docx",
+      status: "succeeded",
+    });
+    vi.mocked(listJobTargets).mockResolvedValue({
+      data: [
+        {
+          company: null,
+          createdAt: "2026-08-26T00:00:00Z",
+          id: "target-id",
+          jobDescriptionCharacterCount: 100,
+          location: null,
+          title: "Staff engineer",
+          updatedAt: "2026-08-26T00:00:00Z",
+        },
+      ],
+    });
+
+    render(<CvWorkspace />);
+
+    expect(await screen.findByText("Ready with limitations")).toBeInTheDocument();
+    expect(screen.getByText(/for more complete results, upload a fuller/i)).toBeInTheDocument();
+    await screen.findByRole("option", { name: "Candidate CV · Version 1" });
+    fireEvent.change(screen.getByLabelText("Prepared CV"), { target: { value: "version-id" } });
+    fireEvent.change(screen.getByLabelText("Target role"), { target: { value: "target-id" } });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Create evidence match" })).toBeEnabled();
+    });
   });
 
   it("provides a private target-role form before any future analysis work", async () => {
@@ -244,6 +312,11 @@ describe("CvExtractionControl warning state", () => {
       parserVersion: "bounded-text-v2",
       quality: "low",
       warnings: ["NO_EXTRACTABLE_TEXT"],
+      readiness: {
+        state: "blocked",
+        explanation: "This document is not ready for comparison because we could not find enough readable content.",
+        recoveryGuidance: "Upload a text-based PDF or DOCX rather than a scanned or image-only document.",
+      },
       completedAt: "2026-08-26T00:00:01Z",
       failureMessage: null,
       id: "extraction-id",
@@ -254,7 +327,8 @@ describe("CvExtractionControl warning state", () => {
 
     render(<CvWorkspace />);
 
-    expect(await screen.findByText(/could not find readable text/i)).toBeInTheDocument();
+    expect(await screen.findByText("Blocked")).toBeInTheDocument();
+    expect(screen.getAllByText(/upload a text-based pdf or docx/i)).toHaveLength(2);
     expect(screen.getByLabelText("Prepared CV")).toBeDisabled();
     expect(screen.queryByText("Private CV content")).not.toBeInTheDocument();
   });
