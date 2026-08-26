@@ -98,6 +98,10 @@ Target-role routes require the validated opaque session cookie. Creation also re
 | `GET` | `/job-targets` | No | Lists safe metadata for the signed-in user’s private target roles. |
 | `POST` | `/job-targets` | Yes | Saves one private, untrusted target role and pasted job description. |
 | `DELETE` | `/job-targets/{target_id}` | Yes | Deletes one owned private target role and dependent analyses. |
+| `GET` | `/job-targets/{target_id}/requirements` | No | Lists cursor-paginated, owner-scoped structured requirements. Query parameters: `limit` (1–50, default 20) and optional `cursor`. |
+| `POST` | `/job-targets/{target_id}/requirements` | Yes | Creates one manually reviewed structured requirement under an owned target role. |
+| `PATCH` | `/job-targets/{target_id}/requirements/{requirement_id}` | Yes | Partially updates one owned structured requirement. |
+| `DELETE` | `/job-targets/{target_id}/requirements/{requirement_id}` | Yes | Deletes one owned structured requirement. |
 
 Creation accepts a strict JSON object with no unknown fields. `title` is 2–180 characters; optional `company` and `location` are at most 180 characters; `jobDescription` is 80–50,000 characters after whitespace trimming.
 
@@ -111,6 +115,8 @@ Creation accepts a strict JSON object with no unknown fields. `title` is 2–180
 ```
 
 Creation and listing return safe metadata including `jobDescriptionCharacterCount`; `jobDescription` is intentionally omitted from every public target response. Both delete routes return `204 No Content` only after an explicit authenticated owner action and valid CSRF token. A missing or another user’s document/target returns the same `404 RESOURCE_NOT_FOUND` response; the browser presents an irreversible-action confirmation before submitting the delete request.
+
+A structured requirement is manually supplied and reviewed data; this phase does not infer or extract it from the private job description. Requirement create/update payloads use strict schemas and reject unknown fields. Each response contains `requirement`, `category` (`must-have`, `should-have`, or `nice-to-have`), optional `normalizedSkill`, `priority` (1–100), optional `sourceReference`, server-controlled `normalizationVersion` (`manual-v1`), `reviewState` (`unreviewed`, `reviewed`, or `user-confirmed`), and timestamps. The requirement list uses owner-scoped keyset pagination ordered by priority, creation time, and ID; `nextCursor` is a requirement UUID or `null`. Neither requirement route returns the private target job description, input storage metadata, or unrelated user data.
 
 ## Deterministic match-analysis routes
 

@@ -17,6 +17,7 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
             "cv_document_versions",
             "cv_extractions",
             "job_targets",
+            "job_requirements",
             "match_analyses",
         }.issubset(tables)
 
@@ -38,6 +39,15 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
         }
         job_target_constraints = {
             constraint["name"] for constraint in inspector.get_check_constraints("job_targets")
+        }
+        job_requirement_columns = {
+            column["name"] for column in inspector.get_columns("job_requirements")
+        }
+        job_requirement_constraints = {
+            constraint["name"] for constraint in inspector.get_check_constraints("job_requirements")
+        }
+        job_requirement_indexes = {
+            index["name"] for index in inspector.get_indexes("job_requirements")
         }
         match_analysis_columns = {
             column["name"] for column in inspector.get_columns("match_analyses")
@@ -77,6 +87,22 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
             "job_description_character_count",
         }.issubset(job_target_columns)
         assert "ck_job_target_description_character_count_nonnegative" in job_target_constraints
+        assert {
+            "user_id",
+            "job_target_id",
+            "requirement_text",
+            "category",
+            "priority",
+            "normalization_version",
+            "review_state",
+        }.issubset(job_requirement_columns)
+        assert {
+            "ck_job_requirement_text_length",
+            "ck_job_requirement_category",
+            "ck_job_requirement_priority_range",
+            "ck_job_requirement_review_state",
+        }.issubset(job_requirement_constraints)
+        assert "ix_job_requirements_target_priority_created_id" in job_requirement_indexes
         assert {
             "user_id",
             "cv_document_version_id",
