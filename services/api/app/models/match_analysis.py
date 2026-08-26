@@ -22,7 +22,8 @@ class MatchAnalysis(Base):
             "cv_document_version_id",
             "job_target_id",
             "scoring_version",
-            name="uq_match_analysis_input_version",
+            "input_fingerprint",
+            name="uq_match_analysis_input_fingerprint",
         ),
         CheckConstraint(
             "overall_score >= 0 AND overall_score <= 100", name="ck_match_analysis_score_range"
@@ -46,6 +47,7 @@ class MatchAnalysis(Base):
         index=True,
     )
     scoring_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     overall_score: Mapped[int] = mapped_column(nullable=False)
     result_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

@@ -1,6 +1,6 @@
 # CVMatcher Architecture
 
-## Implemented Phase 5 architecture
+## Implemented backend architecture through deterministic scoring v3
 
 CVMatcher is a modular monorepo with a Next.js frontend and a FastAPI backend. The services are independently buildable, but the product remains a deliberately simple single-application architecture: one browser client, one API, one PostgreSQL database, and one private-storage adapter boundary. It does not use microservices, queues, Redis, vector storage, billing infrastructure, AI orchestration, or external scoring services.
 
@@ -13,7 +13,7 @@ flowchart LR
   API -->|server-only opaque keys| Storage[Private object storage adapter]
   API -->|short-lived worker thread| Parser[Constrained child parser]
   Parser -->|private result only| API
-  API -->|owned private CV text + job text| Scorer[deterministic-v2 scorer]
+  API -->|owned private CV evidence + reviewed requirements| Scorer[versioned deterministic v2/v3 scorers]
   Scorer -->|bounded evidence result| API
   API --> Logs[Redacted structured logs]
   API -. deferred server-only adapter .-> OpenAI[OpenAI]
@@ -48,7 +48,8 @@ Phase 2 persists private document bytes and safe metadata. Phase 3 adds explicit
 | Intake and storage | Streams a maximum 10 MiB PDF/DOCX into private storage with safe metadata and opaque keys. No public storage URL or document-download route exists. |
 | Extraction service | Owner-scopes an immutable version and runs bounded parsing in a short-lived spawned child process. Raw extracted text remains in `cv_extractions.extracted_text`. |
 | Target-role service | Owner-scopes a strict target form and stores raw pasted job text only in `job_targets.job_description`. Public target projections expose safe metadata and a character count. |
-| Match-analysis service | Owner-scopes both selected resources, requires a successful non-empty extraction, reuses the matching `(CV version, target, scoring version)` result, calculates locally, and returns a Pydantic-validated metadata-only projection. |
+| Requirement service | Owner-scopes manual structured requirements under one target role, constrains category/priority/review state, and returns only bounded reviewed metadata through cursor pagination. |
+| Match-analysis service | Owner-scopes both selected resources, requires an analysis-eligible extraction, preserves v2 reuse, and derives v3 results only from server-owned reviewed requirements plus normalized CV evidence. V3 reuse is keyed by a server-computed input fingerprint. |
 | Deterministic scorer | Treats CV/job text as untrusted data. It uses no network call, model, embedding, prompt, or semantic inference; only exact normalized text, fixed source-controlled vocabularies, and fixed component weights are used. |
 | PostgreSQL | Stores user-owned documents, immutable versions, extractions, target roles, and derived analyses. Raw source text never leaves server-controlled data paths. |
 
@@ -74,7 +75,8 @@ Phase 2 persists private document bytes and safe metadata. Phase 3 adds explicit
 | `cv_document_versions` | Immutable uploaded version metadata and opaque object key. |
 | `cv_extractions` | One private extraction lifecycle record per immutable version, with server-only text and safe lifecycle metadata. |
 | `job_targets` | User-owned target-role metadata and private untrusted pasted job description with a stored character count. |
-| `match_analyses` | Owner-owned derived score/result for one CV version, target role, and named scoring version. A unique tuple prevents duplicate deterministic result creation for the same inputs/version. |
+| `job_requirements` | User-owned manual structured requirements with category, normalized skill, priority, review state, normalization version, and safe source reference. |
+| `match_analyses` | Owner-owned derived score/result for one CV version, target role, scoring version, and input fingerprint. The fingerprint makes v3 requirement mutations explicitly versioned without changing historical results. |
 | `audit_events` | Existing non-content security-event metadata foundation. |
 
 All document, extraction, target, and analysis queries derive ownership from the authenticated user. Public analysis responses omit raw CV text, raw job-description text, document IDs, target IDs, storage keys, and internal parser/scorer implementation state. The CV-version row lock and tuple constraint preserve idempotent result creation for a selected immutable version and scoring version.

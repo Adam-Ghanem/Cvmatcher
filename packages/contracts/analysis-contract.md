@@ -10,6 +10,7 @@ Creation accepts a strict, owner-neutral payload. Ownership is derived exclusive
 interface CreateMatchAnalysisInput {
   cvDocumentVersionId: string;
   jobTargetId: string;
+  scoringVersion?: "deterministic-v2" | "deterministic-v3";
 }
 ```
 
@@ -47,9 +48,39 @@ interface MatchAnalysis {
   overallScore: number;
   components: MatchScoreComponent[];
   gaps: MatchGap[];
+  requirements?: RequirementMatch[];
+  calculationMetadata?: V3CalculationMetadata;
   createdAt: string;
 }
 ```
+
+interface RequirementMatch {
+  requirementId: string;
+  category: "must-have" | "should-have" | "nice-to-have";
+  normalizedSkill: string | null;
+  priority: number;
+  normalizationVersion: string;
+  reviewState: "unreviewed" | "reviewed" | "user-confirmed";
+  state:
+    | "MATCHED"
+    | "NOT_FOUND_IN_PROVIDED_CV"
+    | "NOT_REVIEWED"
+    | "NOT_COMPARABLE"
+    | "DUPLICATE_SUPERSEDED";
+  message: string;
+  evidence: { source: "CV_NORMALIZED_SKILL"; term: string } | null;
+}
+
+interface V3CalculationMetadata {
+  configurationVersion: "requirements-category-weighting-v1";
+  categoryBaseWeights: {
+    "must-have": 60;
+    "should-have": 30;
+    "nice-to-have": 10;
+  };
+  eligibleRequirementCount: number;
+  inputFingerprint: string;
+}
 
 ## Contract invariants
 
@@ -57,12 +88,13 @@ interface MatchAnalysis {
 |---|---|
 | Scope | An analysis is private and owner-scoped. An absent and another user’s resource both return `404 RESOURCE_NOT_FOUND`. |
 | Readiness | An owned version without succeeded private text returns `409 CV_TEXT_NOT_READY`; no source text is returned. |
-| Idempotency | The same CV version, target role, and scoring version reuse one persisted result. A scoring-version change intentionally permits a new result. |
+| Idempotency | V2 reuses its historical analysis for the same CV version and target. V3 reuses the same result only when the server-computed reviewed-requirement input fingerprint is unchanged; a scoring-version or v3 fingerprint change intentionally permits a new result. |
 | Scores | `overallScore` and component scores are inclusive integers from `0` to `100`. Components retain fixed documented weights. |
-| Evidence | `matchedTerms`, `notFoundTerms`, and gaps contain only bounded normalized terms produced by fixed source-controlled rules. |
+| Evidence | V2 `matchedTerms`, `notFoundTerms`, and gaps contain only bounded normalized terms produced by fixed source-controlled rules. V3 requirement evidence is server-derived solely from an owned reviewed requirement and normalized private CV term; clients cannot submit trusted requirement or evidence identifiers. |
 | Missing evidence | A missing term uses `NOT_FOUND_IN_PROVIDED_CV`; it does not claim the person lacks a qualification. |
 | Privacy | Responses never contain raw CV text, raw job-description text, document/target IDs, user IDs, opaque storage keys, or document URLs. |
 | Non-prediction | The score is not a prediction or guarantee of interviews, employment, ATS outcome, or suitability. |
+| V3 inputs | V3 uses only reviewed/user-confirmed owned structured requirements with a normalized skill. No eligible requirement returns `409 REQUIREMENTS_NOT_READY`; it does not silently produce a score. |
 | AI exclusion | No LLM, embedding, semantic service, external API, prompt, or model output participates in this contract. |
 
 ## Versioning policy

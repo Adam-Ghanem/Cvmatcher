@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 from uuid import UUID
 
@@ -9,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ApiException
 from app.models.cv_document import CvDocument, CvDocumentVersion
 from app.models.cv_extraction import CvExtraction
+from app.models.job_requirement import JobRequirement
 from app.models.job_target import JobTarget
 from app.models.match_analysis import MatchAnalysis
 from app.schemas.match_analyses import (
@@ -18,7 +21,17 @@ from app.schemas.match_analyses import (
     MatchAnalysisResponse,
 )
 from app.services.cv_extraction import derive_readiness
-from app.services.deterministic_scoring import SCORING_VERSION, calculate_deterministic_score
+from app.services.deterministic_scoring import (
+    SCORING_VERSION as SCORING_VERSION_V2,
+)
+from app.services.deterministic_scoring import (
+    calculate_deterministic_score,
+)
+from app.services.deterministic_scoring_v3 import (
+    SCORING_VERSION_V3,
+    ReviewedRequirement,
+    calculate_deterministic_v3,
+)
 
 
 class MatchAnalysisService:
@@ -47,15 +60,6 @@ class MatchAnalysisService:
         )
         if target is None:
             raise ApiException("RESOURCE_NOT_FOUND", "We could not find that target role.", 404)
-        existing = await database_session.scalar(
-            select(MatchAnalysis).where(
-                MatchAnalysis.cv_document_version_id == version.id,
-                MatchAnalysis.job_target_id == target.id,
-                MatchAnalysis.scoring_version == SCORING_VERSION,
-            )
-        )
-        if existing is not None:
-            return analysis_response(existing)
         extraction = await database_session.scalar(
             select(CvExtraction).where(CvExtraction.document_version_id == version.id)
         )
@@ -76,7 +80,66 @@ class MatchAnalysisService:
                 "Prepare this CV text before creating an analysis.",
                 409,
             )
-        result = calculate_deterministic_score(extraction.extracted_text, target.job_description)
+
+        if payload.scoring_version == SCORING_VERSION_V2:
+            existing = await database_session.scalar(
+                select(MatchAnalysis).where(
+                    MatchAnalysis.cv_document_version_id == version.id,
+                    MatchAnalysis.job_target_id == target.id,
+                    MatchAnalysis.scoring_version == SCORING_VERSION_V2,
+                )
+            )
+            if existing is not None:
+                return analysis_response(existing)
+            input_fingerprint = legacy_v2_input_fingerprint(version.id, target.id)
+            result = calculate_deterministic_score(
+                extraction.extracted_text,
+                target.job_description,
+            )
+            scoring_version = SCORING_VERSION_V2
+        else:
+            requirements = tuple(
+                reviewed_requirement_from_model(requirement)
+                for requirement in (
+                    await database_session.scalars(
+                        select(JobRequirement)
+                        .where(
+                            JobRequirement.user_id == user_id,
+                            JobRequirement.job_target_id == target.id,
+                        )
+                        .order_by(JobRequirement.id)
+                    )
+                ).all()
+            )
+            input_fingerprint = v3_input_fingerprint(requirements)
+            existing = await database_session.scalar(
+                select(MatchAnalysis).where(
+                    MatchAnalysis.cv_document_version_id == version.id,
+                    MatchAnalysis.job_target_id == target.id,
+                    MatchAnalysis.scoring_version == SCORING_VERSION_V3,
+                    MatchAnalysis.input_fingerprint == input_fingerprint,
+                )
+            )
+            if existing is not None:
+                return analysis_response(existing)
+            result = calculate_deterministic_v3(
+                normalized_cv_terms(extraction.extracted_text),
+                requirements,
+            )
+            calculation_metadata = result.get("calculationMetadata")
+            if not isinstance(calculation_metadata, dict):
+                raise RuntimeError("Deterministic v3 scorer returned invalid calculation metadata.")
+            eligible_requirement_count = calculation_metadata.get("eligibleRequirementCount")
+            if eligible_requirement_count == 0:
+                raise ApiException(
+                    "REQUIREMENTS_NOT_READY",
+                    "Add at least one reviewed requirement with a normalized skill "
+                    "before analysis.",
+                    409,
+                )
+            calculation_metadata["inputFingerprint"] = input_fingerprint
+            scoring_version = SCORING_VERSION_V3
+
         overall_score = result["overallScore"]
         if not isinstance(overall_score, int):
             raise RuntimeError("Deterministic scorer returned an invalid overall score.")
@@ -84,7 +147,8 @@ class MatchAnalysisService:
             user_id=user_id,
             cv_document_version_id=version.id,
             job_target_id=target.id,
-            scoring_version=SCORING_VERSION,
+            scoring_version=scoring_version,
+            input_fingerprint=input_fingerprint,
             overall_score=overall_score,
             result_payload=result,
         )
@@ -186,5 +250,49 @@ def analysis_response(analysis: MatchAnalysis) -> MatchAnalysisResponse:
         overall_score=analysis.overall_score,
         components=payload["components"],
         gaps=payload["gaps"],
+        requirements=payload.get("requirements"),
+        calculation_metadata=payload.get("calculationMetadata"),
         created_at=analysis.created_at,
     )
+
+
+def reviewed_requirement_from_model(requirement: JobRequirement) -> ReviewedRequirement:
+    return ReviewedRequirement(
+        requirement_id=str(requirement.id),
+        requirement="",
+        category=requirement.category,
+        normalized_skill=requirement.normalized_skill,
+        priority=requirement.priority,
+        review_state=requirement.review_state,
+        normalization_version=requirement.normalization_version,
+    )
+
+
+def v3_input_fingerprint(requirements: tuple[ReviewedRequirement, ...]) -> str:
+    payload = {
+        "scoringVersion": SCORING_VERSION_V3,
+        "requirements": [
+            {
+                "id": requirement.requirement_id,
+                "category": requirement.category,
+                "normalizedSkill": requirement.normalized_skill,
+                "priority": requirement.priority,
+                "reviewState": requirement.review_state,
+                "normalizationVersion": requirement.normalization_version,
+            }
+            for requirement in requirements
+        ],
+    }
+    serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def legacy_v2_input_fingerprint(version_id: UUID, target_id: UUID) -> str:
+    serialized = f"{SCORING_VERSION_V2}:{version_id}:{target_id}"
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def normalized_cv_terms(value: str) -> frozenset[str]:
+    from app.services.deterministic_scoring import normalized_terms
+
+    return normalized_terms(value)

@@ -55,6 +55,9 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
         match_analysis_constraints = {
             constraint["name"] for constraint in inspector.get_check_constraints("match_analyses")
         }
+        match_analysis_unique_constraints = {
+            constraint["name"] for constraint in inspector.get_unique_constraints("match_analyses")
+        }
 
         assert "password_hash" in credential_columns
         assert "password" not in credential_columns
@@ -108,9 +111,11 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
             "cv_document_version_id",
             "job_target_id",
             "scoring_version",
+            "input_fingerprint",
             "overall_score",
             "result_payload",
         }.issubset(match_analysis_columns)
         assert "ck_match_analysis_score_range" in match_analysis_constraints
+        assert "uq_match_analysis_input_fingerprint" in match_analysis_unique_constraints
     finally:
         engine.dispose()

@@ -133,7 +133,8 @@ Creation accepts exactly this strict JSON object. Unknown fields are rejected.
 ```json
 {
   "cvDocumentVersionId": "uuid",
-  "jobTargetId": "uuid"
+  "jobTargetId": "uuid",
+  "scoringVersion": "deterministic-v2"
 }
 ```
 
@@ -167,7 +168,11 @@ A successful detail response returns metadata-only, bounded analysis evidence. I
 }
 ```
 
+`scoringVersion` is optional and defaults to `deterministic-v2`, preserving the prior API behavior. A caller may explicitly request `deterministic-v3`. V3 uses only owner-scoped reviewed or user-confirmed structured requirements with a normalized skill; it does not parse the private target description. If no eligible v3 requirement exists, creation returns `409 REQUIREMENTS_NOT_READY` with a recovery message.
+
 Component `state` is one of `MATCHED`, `PARTIAL`, `EVIDENCE_NOT_FOUND`, or `NOT_APPLICABLE`. Gap state is always `NOT_FOUND_IN_PROVIDED_CV`; it means evidence was not found in the submitted CV text, not that the person lacks the skill or credential. `overallScore` and every component score are integers in the inclusive `0`–`100` range. The score is an explainable planning aid, not a hiring or interview prediction.
+
+A v3 response adds `requirements` and `calculationMetadata`. The requirement records reference only an owned requirement UUID, category, normalized skill, priority, normalization/review metadata, a safe evidence state, and an optional `CV_NORMALIZED_SKILL` term. They do not expose raw CV text or the private requirement/source description. V3 uses fixed category base weights of `must-have: 60`, `should-have: 30`, and `nice-to-have: 10`, multiplied by the stored 1–100 priority. The calculation metadata includes the versioned configuration, eligible count, weights, and a SHA-256 input fingerprint. Existing v2 responses retain their prior fields and omit these optional v3 additions.
 
 Analysis-history responses use keyset pagination ordered by `createdAt` and analysis ID, both descending. `nextCursor` is either a safe opaque analysis UUID for the next page or `null`. A history item returns only the analysis ID, scoring version, overall score, safe CV document title and version number, safe target title, and creation timestamp. It does not return the CV/job source text, target description, input resource IDs, private parser data, or complete result payload. A cursor that is missing or owned by another account returns the same `404 RESOURCE_NOT_FOUND` response.
 

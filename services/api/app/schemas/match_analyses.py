@@ -12,6 +12,10 @@ class CreateMatchAnalysisRequest(BaseModel):
 
     cv_document_version_id: UUID = Field(alias="cvDocumentVersionId")
     job_target_id: UUID = Field(alias="jobTargetId")
+    scoring_version: Literal["deterministic-v2", "deterministic-v3"] = Field(
+        default="deterministic-v2",
+        alias="scoringVersion",
+    )
 
 
 class ScoreComponentResponse(BaseModel):
@@ -26,9 +30,46 @@ class ScoreComponentResponse(BaseModel):
 
 
 class GapResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     term: str
     state: Literal["NOT_FOUND_IN_PROVIDED_CV"]
     component: str
+    requirement_id: UUID | None = Field(default=None, alias="requirementId")
+
+
+class RequirementEvidenceResponse(BaseModel):
+    source: Literal["CV_NORMALIZED_SKILL"]
+    term: str
+
+
+class RequirementMatchResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    requirement_id: UUID = Field(alias="requirementId")
+    category: Literal["must-have", "should-have", "nice-to-have"]
+    normalized_skill: str | None = Field(alias="normalizedSkill")
+    priority: int = Field(ge=1, le=100)
+    normalization_version: str = Field(alias="normalizationVersion")
+    review_state: Literal["unreviewed", "reviewed", "user-confirmed"] = Field(alias="reviewState")
+    state: Literal[
+        "MATCHED",
+        "NOT_FOUND_IN_PROVIDED_CV",
+        "NOT_REVIEWED",
+        "NOT_COMPARABLE",
+        "DUPLICATE_SUPERSEDED",
+    ]
+    message: str
+    evidence: RequirementEvidenceResponse | None
+
+
+class CalculationMetadataResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    configuration_version: str = Field(alias="configurationVersion")
+    category_base_weights: dict[str, int] = Field(alias="categoryBaseWeights")
+    eligible_requirement_count: int = Field(alias="eligibleRequirementCount", ge=0)
+    input_fingerprint: str = Field(alias="inputFingerprint", min_length=64, max_length=64)
 
 
 class MatchAnalysisHistoryItem(BaseModel):
@@ -58,4 +99,9 @@ class MatchAnalysisResponse(BaseModel):
     overall_score: int = Field(alias="overallScore", ge=0, le=100)
     components: list[ScoreComponentResponse]
     gaps: list[GapResponse]
+    requirements: list[RequirementMatchResponse] | None = None
+    calculation_metadata: CalculationMetadataResponse | None = Field(
+        default=None,
+        alias="calculationMetadata",
+    )
     created_at: datetime = Field(alias="createdAt")

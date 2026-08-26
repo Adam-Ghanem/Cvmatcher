@@ -8,6 +8,7 @@ from httpx import Response
 
 from app.tests.test_authentication import csrf_token, register
 from app.tests.test_extraction import upload_docx
+from app.tests.test_job_requirements import create_job_requirement
 from app.tests.test_job_targets import create_job_target
 
 PRIVATE_CV_TEXT = (
@@ -35,18 +36,22 @@ def create_analysis(
     cv_document_version_id: str,
     job_target_id: str,
     include_csrf: bool = True,
+    scoring_version: str | None = None,
 ) -> Response:
     headers = {"X-CSRF-Token": csrf_token(client)} if include_csrf else {}
 
+    payload: dict[str, str] = {
+        "cvDocumentVersionId": cv_document_version_id,
+        "jobTargetId": job_target_id,
+    }
+    if scoring_version is not None:
+        payload["scoringVersion"] = scoring_version
     return cast(
         Response,
         client.post(
             "/api/v1/match-analyses",
             headers=headers,
-            json={
-                "cvDocumentVersionId": cv_document_version_id,
-                "jobTargetId": job_target_id,
-            },
+            json=payload,
         ),
     )
 
@@ -156,12 +161,138 @@ def test_successful_but_unreadable_extraction_cannot_create_analysis(client: Tes
         client,
         cv_document_version_id=str(version["id"]),
         job_target_id=str(target["id"]),
+        scoring_version="deterministic-v3",
     )
 
     assert extraction_response.status_code == 200
     assert extraction_response.json()["readiness"]["state"] == "blocked"
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "CV_TEXT_NOT_READY"
+
+
+def test_v3_analysis_uses_owned_reviewed_requirements_and_preserves_v2_history(
+    client: TestClient,
+) -> None:
+    register(client, "v3@example.com")
+    _, version_id = create_ready_cv_version(client)
+    target = create_job_target(client, title="V3 platform target")
+    target_id = str(target["id"])
+    create_job_requirement(
+        client,
+        target_id=target_id,
+        requirement="Build Python services",
+        category="must-have",
+        priority=100,
+        normalized_skill="Python",
+    )
+    requirement_response = create_job_requirement(
+        client,
+        target_id=target_id,
+        requirement="Operate Docker workloads",
+        category="should-have",
+        priority=100,
+        normalized_skill="Docker",
+    )
+    v2_response = create_analysis(
+        client,
+        cv_document_version_id=version_id,
+        job_target_id=target_id,
+    )
+    first_v3_response = create_analysis(
+        client,
+        cv_document_version_id=version_id,
+        job_target_id=target_id,
+        scoring_version="deterministic-v3",
+    )
+    first_v3_body = cast(dict[str, object], first_v3_response.json())
+    repeated_v3_response = create_analysis(
+        client,
+        cv_document_version_id=version_id,
+        job_target_id=target_id,
+        scoring_version="deterministic-v3",
+    )
+    requirement = cast(dict[str, object], requirement_response.json())
+    update_response = client.patch(
+        f"/api/v1/job-targets/{target_id}/requirements/{requirement['id']}",
+        headers={"X-CSRF-Token": csrf_token(client)},
+        json={"normalizedSkill": "Kubernetes"},
+    )
+    second_v3_response = create_analysis(
+        client,
+        cv_document_version_id=version_id,
+        job_target_id=target_id,
+        scoring_version="deterministic-v3",
+    )
+    historic_v2_response = client.get(f"/api/v1/match-analyses/{v2_response.json()['id']}")
+
+    assert v2_response.status_code == 201
+    assert v2_response.json()["scoringVersion"] == "deterministic-v2"
+    assert first_v3_response.status_code == 201
+    assert first_v3_body["scoringVersion"] == "deterministic-v3"
+    assert first_v3_body["overallScore"] == 100
+    assert repeated_v3_response.status_code == 201
+    assert repeated_v3_response.json()["id"] == first_v3_body["id"]
+    calculation_metadata = cast(
+        dict[str, object],
+        first_v3_body["calculationMetadata"],
+    )
+    assert calculation_metadata["eligibleRequirementCount"] == 2
+    requirement_entries = cast(list[dict[str, object]], first_v3_body["requirements"])
+    assert all(entry["requirementId"] != "" for entry in requirement_entries)
+    assert all("Private manual requirement text" not in str(entry) for entry in requirement_entries)
+    assert update_response.status_code == 200
+    assert second_v3_response.status_code == 201
+    assert second_v3_response.json()["id"] != first_v3_body["id"]
+    assert second_v3_response.json()["overallScore"] == 67
+    assert historic_v2_response.status_code == 200
+    assert historic_v2_response.json() == v2_response.json()
+
+
+def test_v3_accepts_warning_ready_cv_text_with_reviewed_requirements(client: TestClient) -> None:
+    register(client, "v3-warning@example.com")
+    document = upload_docx(client, "Python experience")
+    version = cast(dict[str, object], document["latestVersion"])
+    extraction_response = client.post(
+        f"/api/v1/cv-documents/{document['id']}/versions/{version['id']}/extraction",
+        headers={"X-CSRF-Token": csrf_token(client)},
+    )
+    target = create_job_target(client, title="Warning-ready v3 target")
+    create_job_requirement(
+        client,
+        target_id=str(target["id"]),
+        requirement="Python experience",
+        category="must-have",
+        normalized_skill="Python",
+    )
+
+    response = create_analysis(
+        client,
+        cv_document_version_id=str(version["id"]),
+        job_target_id=str(target["id"]),
+        scoring_version="deterministic-v3",
+    )
+
+    assert extraction_response.json()["readiness"]["state"] == "warning"
+    assert response.status_code == 201
+    assert response.json()["overallScore"] == 100
+
+
+def test_v3_rejects_owned_targets_without_eligible_reviewed_requirements(
+    client: TestClient,
+) -> None:
+    register(client, "v3-empty@example.com")
+    _, version_id = create_ready_cv_version(client)
+    target = create_job_target(client, title="No reviewed requirements")
+
+    response = create_analysis(
+        client,
+        cv_document_version_id=version_id,
+        job_target_id=str(target["id"]),
+        scoring_version="deterministic-v3",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "REQUIREMENTS_NOT_READY"
 
 
 def test_owner_can_page_through_private_analysis_history_without_source_text(
@@ -285,6 +416,7 @@ def test_match_analyses_are_invisible_across_owners(
         second_client,
         cv_document_version_id=other_version_id,
         job_target_id=str(owner_target["id"]),
+        scoring_version="deterministic-v3",
     )
     read_response = second_client.get(f"/api/v1/match-analyses/{owner_analysis['id']}")
 
@@ -295,3 +427,22 @@ def test_match_analyses_are_invisible_across_owners(
     assert cross_cv_response.json()["error"]["code"] == "RESOURCE_NOT_FOUND"
     assert cross_target_response.json()["error"]["code"] == "RESOURCE_NOT_FOUND"
     assert read_response.json()["error"]["code"] == "RESOURCE_NOT_FOUND"
+
+
+def test_v3_rejects_client_supplied_evidence_fields(client: TestClient) -> None:
+    register(client, "v3-invalid-evidence@example.com")
+    _, version_id = create_ready_cv_version(client)
+    target = create_job_target(client)
+
+    response = client.post(
+        "/api/v1/match-analyses",
+        headers={"X-CSRF-Token": csrf_token(client)},
+        json={
+            "cvDocumentVersionId": version_id,
+            "jobTargetId": str(target["id"]),
+            "scoringVersion": "deterministic-v3",
+            "evidence": [{"source": "CV_NORMALIZED_SKILL", "term": "python"}],
+        },
+    )
+
+    assert response.status_code == 422
