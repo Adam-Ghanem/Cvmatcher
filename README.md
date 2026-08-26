@@ -116,6 +116,7 @@ No real secrets belong in the repository. Copy `.env.example` to `.env` locally 
 | [`docs/adr/0004-deterministic-evidence-scoring.md`](docs/adr/0004-deterministic-evidence-scoring.md) | Deterministic-v2 scoring and trust-boundary decision. |
 | [`docs/phase-5-implementation-report.md`](docs/phase-5-implementation-report.md) | Phase 5 implementation and verification record. |
 | [`docs/phase-6-implementation-report.md`](docs/phase-6-implementation-report.md) | Phase 6 private-data deletion implementation and verification record. |
+| [`docs/privacy-data-lifecycle-strategy.md`](docs/privacy-data-lifecycle-strategy.md) | Production Privacy Center, export, retention, backup, and deletion strategy requiring policy approval. |
 | [`packages/contracts/analysis-contract.md`](packages/contracts/analysis-contract.md) | Implemented public deterministic analysis contract. |
 | [`docs/adr/0001-phase-1-foundation.md`](docs/adr/0001-phase-1-foundation.md) | Initial foundation decisions. |
 | [`docs/adr/0002-authentication-and-secure-cv-intake.md`](docs/adr/0002-authentication-and-secure-cv-intake.md) | Authentication and document-intake threat model. |
