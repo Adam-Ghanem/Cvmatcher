@@ -69,6 +69,9 @@ describe("CvWorkspace", () => {
     vi.mocked(getCvExtraction).mockRejectedValue({ status: 404 });
     vi.mocked(createCvExtraction).mockResolvedValue({
       characterCount: 23,
+      parserVersion: "bounded-text-v2",
+      quality: "usable",
+      warnings: [],
       completedAt: "2026-08-26T00:00:01Z",
       failureMessage: null,
       id: "extraction-id",
@@ -107,6 +110,9 @@ describe("CvWorkspace", () => {
     });
     vi.mocked(getCvExtraction).mockResolvedValue({
       characterCount: 23,
+      parserVersion: "bounded-text-v2",
+      quality: "usable",
+      warnings: [],
       completedAt: "2026-08-26T00:00:01Z",
       failureMessage: null,
       id: "extraction-id",
@@ -218,5 +224,37 @@ describe("CvWorkspace", () => {
       });
       expect(screen.getByText("100 private description characters saved")).toBeInTheDocument();
     });
+  });
+});
+
+
+describe("CvExtractionControl warning state", () => {
+  it("explains when a prepared document has no readable text without displaying document content", async () => {
+    vi.mocked(apiFetch).mockImplementation((path) => {
+      if (path === "/api/v1/auth/me") {
+        return Promise.resolve({ user: { createdAt: "2026-08-26T00:00:00Z", email: "candidate@example.com", id: "user-id" } });
+      }
+      if (path === "/api/v1/cv-documents") {
+        return Promise.resolve({ data: [document] });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    vi.mocked(getCvExtraction).mockResolvedValue({
+      characterCount: 0,
+      parserVersion: "bounded-text-v2",
+      quality: "low",
+      warnings: ["NO_EXTRACTABLE_TEXT"],
+      completedAt: "2026-08-26T00:00:01Z",
+      failureMessage: null,
+      id: "extraction-id",
+      sourceType: "pdf",
+      status: "succeeded",
+    });
+    vi.mocked(listJobTargets).mockResolvedValue({ data: [] });
+
+    render(<CvWorkspace />);
+
+    expect(await screen.findByText(/could not find readable text/i)).toBeInTheDocument();
+    expect(screen.queryByText("Private CV content")).not.toBeInTheDocument();
   });
 });

@@ -9,6 +9,7 @@ import time
 import xml.etree.ElementTree as element_tree
 import zipfile
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from multiprocessing.connection import Connection
 from typing import Final, Protocol
@@ -29,6 +30,7 @@ from app.services.object_storage import (
     validate_docx_archive,
 )
 
+PARSER_VERSION: Final = "bounded-text-v2"
 MAX_PDF_PAGES: Final = 100
 MAX_EXTRACTED_CHARACTERS: Final = 250_000
 EXTRACTION_WALL_TIMEOUT_SECONDS: Final = 8.0
@@ -39,6 +41,33 @@ _WORKER_SHUTDOWN_GRACE_SECONDS: Final = 0.25
 SAFE_FAILURE_MESSAGE: Final = (
     "We could not read this CV. Upload a different PDF or DOCX and try again."
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractionQualityAssessment:
+    """Bounded, non-content quality signals derived from private extracted text."""
+
+    character_count: int
+    line_count: int
+    quality: str
+    warnings: tuple[str, ...]
+
+
+def assess_extracted_text(text: str) -> ExtractionQualityAssessment:
+    line_count = len(text.splitlines())
+    if not text.strip():
+        return ExtractionQualityAssessment(
+            character_count=0,
+            line_count=0,
+            quality="low",
+            warnings=("NO_EXTRACTABLE_TEXT",),
+        )
+    return ExtractionQualityAssessment(
+        character_count=len(text),
+        line_count=line_count,
+        quality="usable",
+        warnings=(),
+    )
 
 
 class ExtractionWorkerError(Exception):
@@ -116,12 +145,18 @@ async def extract_owned_version(
             document_version_id=version.id,
             status="processing",
             source_type=source_type,
+            parser_version=PARSER_VERSION,
+            quality="unknown",
+            warnings=[],
         )
         database_session.add(extraction)
     else:
         extraction.status = "processing"
         extraction.source_type = source_type
         extraction.character_count = 0
+        extraction.parser_version = PARSER_VERSION
+        extraction.quality = "unknown"
+        extraction.warnings = []
         extraction.extracted_text = None
         extraction.failure_message = None
         extraction.completed_at = None
@@ -140,10 +175,14 @@ async def extract_owned_version(
     except (ApiException, ExtractionWorkerError, OSError):
         mark_extraction_failed(extraction)
     else:
+        assessment = assess_extracted_text(text)
         extraction.status = "succeeded"
         extraction.source_type = extracted_source_type
+        extraction.parser_version = PARSER_VERSION
+        extraction.quality = assessment.quality
+        extraction.warnings = list(assessment.warnings)
         extraction.extracted_text = text
-        extraction.character_count = len(text)
+        extraction.character_count = assessment.character_count
         extraction.failure_message = None
         extraction.completed_at = datetime.now(UTC)
 
@@ -163,6 +202,9 @@ def source_type_for_content_type(content_type: str) -> str:
 def mark_extraction_failed(extraction: CvExtraction) -> None:
     extraction.status = "failed"
     extraction.character_count = 0
+    extraction.parser_version = PARSER_VERSION
+    extraction.quality = "unknown"
+    extraction.warnings = []
     extraction.extracted_text = None
     extraction.failure_message = SAFE_FAILURE_MESSAGE
     extraction.completed_at = datetime.now(UTC)

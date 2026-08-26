@@ -219,3 +219,43 @@ def test_repeating_successful_extraction_reuses_the_existing_record(client: Test
     assert second_response.status_code == 200
     assert first_body["id"] == second_body["id"]
     assert second_body["status"] == "succeeded"
+
+
+def test_extraction_quality_assessment_reports_only_bounded_non_content_metadata() -> None:
+    from app.services.cv_extraction import assess_extracted_text
+
+    assessment = assess_extracted_text("Candidate\nPython\nExperience")
+
+    assert assessment.character_count == len("Candidate\nPython\nExperience")
+    assert assessment.line_count == 3
+    assert assessment.quality == "usable"
+    assert assessment.warnings == ()
+
+
+def test_extraction_quality_assessment_warns_when_document_contains_no_extractable_text() -> None:
+    from app.services.cv_extraction import assess_extracted_text
+
+    assessment = assess_extracted_text("")
+
+    assert assessment.character_count == 0
+    assert assessment.line_count == 0
+    assert assessment.quality == "low"
+    assert assessment.warnings == ("NO_EXTRACTABLE_TEXT",)
+
+
+def test_successful_extraction_returns_safe_parser_and_quality_metadata(client: TestClient) -> None:
+    register(client, "metadata@example.com")
+    document = upload_docx(client, "Private CV content")
+    version = cast(dict[str, object], document["latestVersion"])
+
+    response = client.post(
+        f"/api/v1/cv-documents/{document['id']}/versions/{version['id']}/extraction",
+        headers={"X-CSRF-Token": csrf_token(client)},
+    )
+
+    body = cast(dict[str, object], response.json())
+    assert response.status_code == 200
+    assert body["parserVersion"] == "bounded-text-v2"
+    assert body["quality"] == "usable"
+    assert body["warnings"] == []
+    assert "Private CV content" not in response.text

@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,6 +38,11 @@ class CvExtraction(Base):
     status: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
     source_type: Mapped[str] = mapped_column(String(12), nullable=False)
     character_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    parser_version: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="bounded-text-v2"
+    )
+    quality: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    warnings: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     failure_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

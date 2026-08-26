@@ -95,6 +95,9 @@ export interface CvExtraction {
   status: CvExtractionStatus;
   sourceType: "pdf" | "docx";
   characterCount: number;
+  parserVersion: string;
+  quality: "unknown" | "low" | "usable";
+  warnings: string[];
   completedAt: string | null;
   failureMessage: string | null;
 }

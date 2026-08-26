@@ -59,6 +59,11 @@ export function CvExtractionControl({
         ) : null}
       </div>
       <p className="mt-1 max-w-sm text-sm leading-6 text-ink-muted">{statusDescription(extraction)}</p>
+      {extraction?.warnings.includes("NO_EXTRACTABLE_TEXT") ? (
+        <p className="mt-3 rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900" role="status">
+          We could not find readable text in this file. Upload a text-based PDF or DOCX to use it for comparison.
+        </p>
+      ) : null}
       {statusError ? (
         <p className="mt-3 rounded-sm border border-danger/30 bg-red-50 px-3 py-2 text-sm leading-6 text-danger" role="alert">
           {statusError}

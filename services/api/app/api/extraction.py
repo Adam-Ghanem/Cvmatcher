@@ -21,6 +21,9 @@ def extraction_response(extraction: CvExtraction) -> CvExtractionResponse:
         status=extraction.status,
         source_type=extraction.source_type,
         character_count=extraction.character_count,
+        parser_version=extraction.parser_version,
+        quality=extraction.quality,
+        warnings=extraction.warnings,
         completed_at=extraction.completed_at,
         failure_message=extraction.failure_message,
     )
