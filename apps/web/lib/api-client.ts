@@ -41,6 +41,17 @@ export interface CvDocumentListResponse {
   data: CvDocument[];
 }
 
+export type CvExtractionStatus = "pending" | "processing" | "succeeded" | "failed";
+
+export interface CvExtraction {
+  id: string;
+  status: CvExtractionStatus;
+  sourceType: "pdf" | "docx";
+  characterCount: number;
+  completedAt: string | null;
+  failureMessage: string | null;
+}
+
 export class ApiRequestError extends Error {
   public readonly code: string;
   public readonly requestId: string;
@@ -110,4 +121,26 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 export async function getCsrfToken(): Promise<string> {
   const response = await apiFetch<CsrfTokenResponse>("/api/v1/auth/csrf");
   return response.csrfToken;
+}
+
+function cvExtractionPath(documentId: string, versionId: string): string {
+  return `/api/v1/cv-documents/${documentId}/versions/${versionId}/extraction`;
+}
+
+export async function getCvExtraction(
+  documentId: string,
+  versionId: string,
+): Promise<CvExtraction> {
+  return apiFetch<CvExtraction>(cvExtractionPath(documentId, versionId));
+}
+
+export async function createCvExtraction(
+  documentId: string,
+  versionId: string,
+): Promise<CvExtraction> {
+  const csrfToken = await getCsrfToken();
+  return apiFetch<CvExtraction>(cvExtractionPath(documentId, versionId), {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken },
+  });
 }

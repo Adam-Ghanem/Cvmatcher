@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, inspect
 from app.tests.conftest import sync_database_url
 
 
-def test_phase_two_migration_creates_secure_identity_and_document_tables() -> None:
+def test_migrations_create_secure_identity_document_and_extraction_tables() -> None:
     engine = create_engine(sync_database_url())
     try:
         inspector = inspect(engine)
@@ -15,6 +15,7 @@ def test_phase_two_migration_creates_secure_identity_and_document_tables() -> No
             "user_sessions",
             "cv_documents",
             "cv_document_versions",
+            "cv_extractions",
         }.issubset(tables)
 
         credential_columns = {
@@ -24,6 +25,12 @@ def test_phase_two_migration_creates_secure_identity_and_document_tables() -> No
         version_columns = {
             column["name"] for column in inspector.get_columns("cv_document_versions")
         }
+        extraction_columns = {
+            column["name"] for column in inspector.get_columns("cv_extractions")
+        }
+        extraction_constraints = {
+            constraint["name"] for constraint in inspector.get_check_constraints("cv_extractions")
+        }
 
         assert "password_hash" in credential_columns
         assert "password" not in credential_columns
@@ -32,5 +39,19 @@ def test_phase_two_migration_creates_secure_identity_and_document_tables() -> No
         )
         assert "private_object_key" in version_columns
         assert "original_filename" in version_columns
+        assert {
+            "document_version_id",
+            "status",
+            "source_type",
+            "character_count",
+            "extracted_text",
+            "failure_message",
+            "completed_at",
+        }.issubset(extraction_columns)
+        assert {
+            "ck_cv_extraction_status",
+            "ck_cv_extraction_source_type",
+            "ck_cv_extraction_character_count_nonnegative",
+        }.issubset(extraction_constraints)
     finally:
         engine.dispose()

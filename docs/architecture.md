@@ -1,6 +1,6 @@
 # CVMatcher Architecture
 
-## Implemented Phase 2 architecture
+## Implemented Phase 3 architecture
 
 CVMatcher is a modular monorepo with a Next.js frontend and a FastAPI backend. The services are independently buildable, but the product remains a deliberately simple single-application architecture: one browser client, one API, one PostgreSQL database, and one private-storage adapter boundary. It does not use microservices, queues, Redis, vector storage, billing infrastructure, or AI orchestration.
 
@@ -11,6 +11,8 @@ flowchart LR
   Web -->|UX route guard only| Browser
   API -->|typed SQLAlchemy queries| DB[(PostgreSQL)]
   API -->|server-only opaque keys| Storage[Private object storage adapter]
+  API -->|short-lived worker thread| Parser[Constrained child parser]
+  Parser -->|private result only| API
   API --> Logs[Redacted structured logs]
   API -. future server-only adapter .-> OpenAI[OpenAI]
 ```
@@ -33,9 +35,9 @@ A successful registration or login issues a high-entropy opaque session cookie. 
 
 The Next.js `proxy.ts` provides a browser-level route guard for `/app`, but it is intentionally not the authorization authority. Every protected FastAPI route resolves the session on the server and derives the principal from the validated session.
 
-## Document intake boundary
+## Document intake and extraction boundary
 
-Phase 2 persists only document bytes and safe metadata. It does **not** parse CV text, run OCR, extract skills, perform matching, send content to OpenAI, or serve document downloads.
+Phase 2 persists document bytes and safe metadata. Phase 3 adds only explicit private text extraction for one already-owned immutable version. It does **not** render documents, run OCR, extract skills, perform matching, send content to OpenAI, or serve document downloads.
 
 | Layer | Implemented responsibility |
 |---|---|
@@ -43,7 +45,9 @@ Phase 2 persists only document bytes and safe metadata. It does **not** parse CV
 | API route | Requires a server-derived session and valid CSRF token. It never accepts client-provided ownership IDs. |
 | Intake adapter | Streams uploads into private staging files, enforces a 10 MiB file limit, normalizes filenames, verifies extension/declaration/signature agreement, and validates DOCX container markers without extracting content. |
 | Private storage | Uses a local development/test adapter with restrictive staging/object permissions and server-generated opaque keys. It exposes no public URL or download route. |
-| PostgreSQL | Stores user-owned logical documents and immutable versions, metadata, checksums, and opaque storage keys. API projections omit the key. |
+| Extraction service | Resolves ownership by document and signed-in principal, reads one stored object server-side, then invokes a short-lived spawned child process from a worker thread. The parent enforces an 8-second deadline and terminates overdue workers. |
+| Parser worker | On Linux, applies 4-second CPU and 256 MiB address-space limits. It uses `pypdf` for PDFs, standard ZIP/XML parsing for DOCX, a 100-page PDF ceiling, shared DOCX archive validation, DTD/entity rejection, and a 250,000-character output ceiling. It returns primitive status data only. |
+| PostgreSQL | Stores user-owned logical documents, immutable versions, and one extraction record per version. `cv_extractions.extracted_text` is server-only; public projections expose safe status, source type, character count, completion time, and recovery message only. |
 
 ## Database model
 
@@ -54,9 +58,10 @@ Phase 2 persists only document bytes and safe metadata. It does **not** parse CV
 | `user_sessions` | Revocable opaque session and CSRF token digests with expiration. |
 | `cv_documents` | Logical user-owned CV record. |
 | `cv_document_versions` | Immutable uploaded version metadata and opaque object key. |
+| `cv_extractions` | One private extraction lifecycle record per immutable version, with constrained source type/status values, count, server-only text, safe failure message, and timestamps. |
 | `audit_events` | Existing non-content security-event metadata foundation. |
 
-All document queries include both the document identifier and the authenticated user ID. A resource that is absent or belongs to another account returns the same `404` response, so document existence is not disclosed across tenants.
+All document and extraction queries include both the document identifier and the authenticated user ID. An absent, unowned, or not-yet-created extraction returns the same `404` response, so resource existence is not disclosed across tenants. A unique database constraint and version-row lock make the creation flow idempotent for a single immutable version.
 
 ## Deployment boundary
 

@@ -14,6 +14,7 @@ dependencies = [
   "asyncpg>=0.30,<1",
   "fastapi>=0.115,<1",
   "pydantic-settings>=2.10,<3",
+  "pypdf>=5.0,<7",
   "python-multipart>=0.0.20,<1",
   "psycopg[binary]>=3.2,<4",
   "sqlalchemy>=2.0,<3",

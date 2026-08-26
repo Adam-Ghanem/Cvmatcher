@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { apiFetch } from "@/lib/api-client";
+import {
+  apiFetch,
+  createCvExtraction,
+  getCvExtraction,
+} from "@/lib/api-client";
 
 describe("apiFetch", () => {
   afterEach(() => {
@@ -29,6 +33,39 @@ describe("apiFetch", () => {
       requestId: "3f79e747-17ab-4c80-9e5a-4a9e438471f8",
       status: 503,
     });
+  });
+
+  it("uses protected API contracts to create and retrieve an extraction status", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrfToken: "csrf-token" }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "extraction-id", status: "processing" }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "extraction-id", status: "succeeded" }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createCvExtraction("document-id", "version-id");
+    const extraction = await getCvExtraction("document-id", "version-id");
+
+    const [createUrl, createInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(createUrl).toContain("/api/v1/cv-documents/document-id/versions/version-id/extraction");
+    expect(createInit.method).toBe("POST");
+    expect(createInit.headers).toMatchObject({ "X-CSRF-Token": "csrf-token" });
+    expect(extraction.status).toBe("succeeded");
   });
 
   it("sends browser credentials and a correlation identifier by default", async () => {

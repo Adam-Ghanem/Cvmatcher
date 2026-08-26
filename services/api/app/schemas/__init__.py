@@ -11,6 +11,7 @@ from app.schemas.cv_documents import (
     CvDocumentVersionsResponse,
     CvDocumentVersionSummary,
 )
+from app.schemas.extraction import CvExtractionResponse
 
 __all__ = [
     "ApiErrorDetail",
@@ -22,6 +23,7 @@ __all__ = [
     "CvDocumentSummary",
     "CvDocumentVersionSummary",
     "CvDocumentVersionsResponse",
+    "CvExtractionResponse",
     "HealthResponse",
     "PublicUser",
     "ReadinessResponse",

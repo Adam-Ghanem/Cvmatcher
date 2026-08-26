@@ -2,16 +2,20 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 
+import { CvExtractionControl } from "@/components/app/CvExtractionControl";
 import {
   ApiRequestError,
   apiFetch,
   apiUrl,
+  createCvExtraction,
   CvDocument,
   CvDocumentListResponse,
+  CvExtraction,
   CurrentUser,
   getCsrfToken,
+  getCvExtraction,
 } from "@/lib/api-client";
 
 type UploadState = "idle" | "uploading" | "complete";
@@ -56,12 +60,64 @@ export function CvWorkspace() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [extractions, setExtractions] = useState<Record<string, CvExtraction | null>>({});
+  const [extractionErrors, setExtractionErrors] = useState<Record<string, string>>({});
+  const [startingVersionId, setStartingVersionId] = useState<string | null>(null);
 
-  async function fetchWorkspace() {
+  const fetchWorkspace = useCallback(async () => {
     return Promise.all([
       apiFetch<{ user: CurrentUser }>("/api/v1/auth/me"),
       apiFetch<CvDocumentListResponse>("/api/v1/cv-documents"),
     ]);
+  }, []);
+
+  const loadExtractionStatus = useCallback(async (document: CvDocument) => {
+    const versionId = document.latestVersion.id;
+    try {
+      const extraction = await getCvExtraction(document.id, versionId);
+      setExtractions((currentExtractions) => ({ ...currentExtractions, [versionId]: extraction }));
+      setExtractionErrors((currentErrors) => {
+        const remainingErrors = { ...currentErrors };
+        delete remainingErrors[versionId];
+        return remainingErrors;
+      });
+    } catch (requestError) {
+      if (requestError instanceof ApiRequestError && requestError.status === 404) {
+        setExtractions((currentExtractions) => ({ ...currentExtractions, [versionId]: null }));
+        return;
+      }
+      setExtractionErrors((currentErrors) => ({
+        ...currentErrors,
+        [versionId]: "We could not check this CV’s preparation status. Refresh and try again.",
+      }));
+    }
+  }, []);
+
+  const loadExtractionStatuses = useCallback((currentDocuments: CvDocument[]) => {
+    void Promise.all(currentDocuments.map((document) => loadExtractionStatus(document)));
+  }, [loadExtractionStatus]);
+
+  async function startExtraction(document: CvDocument) {
+    const versionId = document.latestVersion.id;
+    setStartingVersionId(versionId);
+    setExtractionErrors((currentErrors) => {
+      const remainingErrors = { ...currentErrors };
+      delete remainingErrors[versionId];
+      return remainingErrors;
+    });
+    try {
+      const extraction = await createCvExtraction(document.id, versionId);
+      setExtractions((currentExtractions) => ({ ...currentExtractions, [versionId]: extraction }));
+    } catch (requestError) {
+      setExtractionErrors((currentErrors) => ({
+        ...currentErrors,
+        [versionId]: requestError instanceof ApiRequestError
+          ? requestError.message
+          : "We could not prepare this CV. Please try again.",
+      }));
+    } finally {
+      setStartingVersionId(null);
+    }
   }
 
   async function loadWorkspace() {
@@ -71,6 +127,7 @@ export function CvWorkspace() {
       const [identity, documentResponse] = await fetchWorkspace();
       setUser(identity.user);
       setDocuments(documentResponse.data);
+      loadExtractionStatuses(documentResponse.data);
     } catch (requestError) {
       if (requestError instanceof ApiRequestError && requestError.status === 401) {
         router.replace("/auth/login");
@@ -93,6 +150,7 @@ export function CvWorkspace() {
         if (active) {
           setUser(identity.user);
           setDocuments(documentResponse.data);
+          loadExtractionStatuses(documentResponse.data);
         }
       })
       .catch((requestError: unknown) => {
@@ -117,7 +175,7 @@ export function CvWorkspace() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [fetchWorkspace, loadExtractionStatuses, router]);
 
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -222,7 +280,7 @@ export function CvWorkspace() {
               Start with the evidence you control.
             </h1>
             <p className="mt-4 max-w-2xl leading-7 text-ink-muted">
-              Upload a PDF or DOCX CV to create a private versioned record. CVMatcher will not infer or analyse its content until you explicitly begin a future match.
+              Upload a PDF or DOCX CV to create a private versioned record. When you choose, CVMatcher can prepare private working text for a future analysis; the text is never displayed here.
             </p>
 
             <section className="mt-8 rounded-md border border-line bg-surface-subtle p-5 sm:p-6" aria-labelledby="upload-heading">
@@ -276,7 +334,31 @@ export function CvWorkspace() {
               {isLoading ? <div className="mt-5 space-y-3" aria-label="Loading CV documents"><div className="h-20 animate-pulse rounded-sm bg-surface-subtle" /><div className="h-20 animate-pulse rounded-sm bg-surface-subtle" /></div> : null}
               {loadError ? <div className="mt-5 rounded-sm border border-danger/30 bg-red-50 p-4 text-sm leading-6 text-danger" role="alert"><p>{loadError}</p><button className="mt-2 font-semibold underline underline-offset-4" onClick={() => void loadWorkspace()} type="button">Try again</button></div> : null}
               {!isLoading && !loadError && documents.length === 0 ? <div className="mt-5 rounded-md border border-line bg-surface-subtle p-6"><h3 className="font-semibold">No CVs saved yet</h3><p className="mt-2 max-w-xl text-sm leading-6 text-ink-muted">Your first upload creates a private, versioned starting point. When matching launches, you will choose exactly which version to use.</p><button className="mt-4 text-sm font-semibold text-brand underline decoration-brand/40 underline-offset-4" onClick={() => uploadInputRef.current?.click()} type="button">Choose your first CV</button></div> : null}
-              {!isLoading && !loadError && documents.length > 0 ? <ul className="mt-5 space-y-3">{documents.map((document) => <li className="rounded-sm border border-line bg-white p-4 sm:flex sm:items-center sm:justify-between sm:gap-4" key={document.id}><div><h3 className="font-semibold">{document.title}</h3><p className="mt-1 text-sm text-ink-muted">{document.latestVersion.originalFilename} · Version {document.latestVersion.versionNumber} · {readableSize(document.latestVersion.byteSize)}</p></div><p className="mt-3 text-sm text-ink-muted sm:mt-0">Saved {formatDate(document.updatedAt)}</p></li>)}</ul> : null}
+              {!isLoading && !loadError && documents.length > 0 ? (
+                <ul className="mt-5 space-y-3">
+                  {documents.map((document) => {
+                    const versionId = document.latestVersion.id;
+                    return (
+                      <li className="rounded-sm border border-line bg-white p-4 sm:flex sm:items-center sm:justify-between sm:gap-4" key={document.id}>
+                        <div>
+                          <h3 className="font-semibold">{document.title}</h3>
+                          <p className="mt-1 text-sm text-ink-muted">
+                            {document.latestVersion.originalFilename} · Version {document.latestVersion.versionNumber} · {readableSize(document.latestVersion.byteSize)}
+                          </p>
+                          <p className="mt-3 text-sm text-ink-muted">Saved {formatDate(document.updatedAt)}</p>
+                        </div>
+                        <CvExtractionControl
+                          document={document}
+                          extraction={extractions[versionId]}
+                          isStarting={startingVersionId === versionId}
+                          onStart={startExtraction}
+                          statusError={extractionErrors[versionId] ?? null}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
             </section>
           </section>
 

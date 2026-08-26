@@ -44,6 +44,8 @@ class PrivateObjectStorage(Protocol):
 
     async def commit_staged(self, staged_document: StagedDocument) -> PrivateObjectKey: ...
 
+    async def read_bytes(self, *, object_key: PrivateObjectKey, max_bytes: int) -> bytes: ...
+
     async def delete(self, *, object_key: PrivateObjectKey) -> None: ...
 
     async def discard_staged(self, staged_document: StagedDocument) -> None: ...
@@ -101,26 +103,31 @@ def validate_document_signature(
 def validate_docx_container(staging_path: Path) -> None:
     try:
         with zipfile.ZipFile(staging_path) as archive:
-            file_infos = archive.infolist()
-            if len(file_infos) > MAX_DOCX_ARCHIVE_ENTRIES:
-                raise ValueError("too many archive entries")
-            if sum(file_info.file_size for file_info in file_infos) > MAX_DOCX_UNCOMPRESSED_BYTES:
-                raise ValueError("archive expansion exceeds policy")
-            names = {file_info.filename for file_info in file_infos}
-            if "[Content_Types].xml" not in names or "word/document.xml" not in names:
-                raise ValueError("required Office markers absent")
-            if any(
-                PurePosixPath(file_info.filename).is_absolute()
-                or ".." in PurePosixPath(file_info.filename).parts
-                for file_info in file_infos
-            ):
-                raise ValueError("unsafe archive member path")
+            validate_docx_archive(archive)
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         raise ApiException(
             code="UNSUPPORTED_DOCUMENT",
             message="The DOCX file is not a supported Office document.",
             status_code=422,
         ) from exc
+
+
+def validate_docx_archive(archive: zipfile.ZipFile) -> None:
+    """Validate Office archive structure before any document XML is read."""
+    file_infos = archive.infolist()
+    if len(file_infos) > MAX_DOCX_ARCHIVE_ENTRIES:
+        raise ValueError("too many archive entries")
+    if sum(file_info.file_size for file_info in file_infos) > MAX_DOCX_UNCOMPRESSED_BYTES:
+        raise ValueError("archive expansion exceeds policy")
+    names = {file_info.filename for file_info in file_infos}
+    if "[Content_Types].xml" not in names or "word/document.xml" not in names:
+        raise ValueError("required Office markers absent")
+    if any(
+        PurePosixPath(file_info.filename).is_absolute()
+        or ".." in PurePosixPath(file_info.filename).parts
+        for file_info in file_infos
+    ):
+        raise ValueError("unsafe archive member path")
 
 
 class LocalPrivateObjectStorage:
@@ -193,6 +200,16 @@ class LocalPrivateObjectStorage:
                 status_code=503,
             ) from exc
         return object_key
+
+    async def read_bytes(self, *, object_key: PrivateObjectKey, max_bytes: int) -> bytes:
+        object_path = self._object_path(object_key)
+        if object_path.stat().st_size > max_bytes:
+            raise ApiException(
+                code="DOCUMENT_READ_FAILED",
+                message="We could not process this CV. Please upload it again.",
+                status_code=422,
+            )
+        return object_path.read_bytes()
 
     async def delete(self, *, object_key: PrivateObjectKey) -> None:
         self._object_path(object_key).unlink(missing_ok=True)
