@@ -51,6 +51,7 @@ All document routes require the validated opaque session cookie. Upload routes a
 | `GET` | `/cv-documents/{document_id}` | Retrieves safe metadata for one owned document. |
 | `GET` | `/cv-documents/{document_id}/versions` | Lists immutable safe metadata for all versions of one owned document. |
 | `POST` | `/cv-documents/{document_id}/versions` | Streams another PDF or DOCX as the next immutable version. Multipart field: `file`. |
+| `DELETE` | `/cv-documents/{document_id}` | CSRF-protected owner deletion of a CV document, all immutable versions, server-only extractions, derived analyses, and its private stored objects. |
 
 Uploads are limited to **10 MiB**. The API accepts only a `.pdf` with `application/pdf` and the `%PDF-` signature, or a `.docx` with the canonical Office MIME type, ZIP signature, and safe Office container markers. Document responses expose safe metadata only, never raw bytes, storage keys, or download URLs. Missing and unowned documents share `404 RESOURCE_NOT_FOUND`.
 
@@ -86,6 +87,7 @@ Target-role routes require the validated opaque session cookie. Creation also re
 |---|---|---:|---|
 | `GET` | `/job-targets` | No | Lists safe metadata for the signed-in user’s private target roles. |
 | `POST` | `/job-targets` | Yes | Saves one private, untrusted target role and pasted job description. |
+| `DELETE` | `/job-targets/{target_id}` | Yes | Deletes one owned private target role and dependent analyses. |
 
 Creation accepts a strict JSON object with no unknown fields. `title` is 2–180 characters; optional `company` and `location` are at most 180 characters; `jobDescription` is 80–50,000 characters after whitespace trimming.
 
@@ -98,7 +100,7 @@ Creation accepts a strict JSON object with no unknown fields. `title` is 2–180
 }
 ```
 
-Creation and listing return safe metadata including `jobDescriptionCharacterCount`; `jobDescription` is intentionally omitted from every public target response.
+Creation and listing return safe metadata including `jobDescriptionCharacterCount`; `jobDescription` is intentionally omitted from every public target response. Both delete routes return `204 No Content` only after an explicit authenticated owner action and valid CSRF token. A missing or another user’s document/target returns the same `404 RESOURCE_NOT_FOUND` response; the browser presents an irreversible-action confirmation before submitting the delete request.
 
 ## Deterministic match-analysis routes
 

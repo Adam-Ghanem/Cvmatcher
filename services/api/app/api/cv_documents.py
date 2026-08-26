@@ -80,6 +80,26 @@ async def create_cv_document(
         raise
 
 
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_cv_document(
+    document_id: UUID,
+    request: Request,
+    database_session: DatabaseSession,
+    authenticated_session: AuthenticatedSessionDependency,
+    submitted_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+) -> None:
+    validate_authenticated_csrf(
+        request,
+        authenticated_session=authenticated_session,
+        submitted_csrf_token=submitted_csrf_token,
+    )
+    await document_service(request).delete_document(
+        database_session,
+        document_id=document_id,
+        user_id=authenticated_session.principal.user_id,
+    )
+
+
 @router.get("/{document_id}", response_model=CvDocumentSummary)
 async def get_cv_document(
     document_id: UUID,

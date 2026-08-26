@@ -220,3 +220,20 @@ export async function createCvExtraction(
     headers: { "X-CSRF-Token": csrfToken },
   });
 }
+
+
+export async function deleteCvDocument(documentId: string): Promise<void> {
+  const csrfToken = await getCsrfToken();
+  await apiFetch<void>(`/api/v1/cv-documents/${documentId}`, {
+    method: "DELETE",
+    headers: { "X-CSRF-Token": csrfToken },
+  });
+}
+
+export async function deleteJobTarget(targetId: string): Promise<void> {
+  const csrfToken = await getCsrfToken();
+  await apiFetch<void>(`/api/v1/job-targets/${targetId}`, {
+    method: "DELETE",
+    headers: { "X-CSRF-Token": csrfToken },
+  });
+}

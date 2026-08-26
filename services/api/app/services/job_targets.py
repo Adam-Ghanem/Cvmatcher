@@ -44,6 +44,23 @@ class JobTargetService:
         )
         return [job_target_summary(target) for target in result.scalars()]
 
+    async def delete_target(
+        self,
+        database_session: AsyncSession,
+        *,
+        user_id: UUID,
+        target_id: UUID,
+    ) -> None:
+        target = await database_session.scalar(
+            select(JobTarget)
+            .where(JobTarget.id == target_id, JobTarget.user_id == user_id)
+            .with_for_update()
+        )
+        if target is None:
+            raise ApiException("RESOURCE_NOT_FOUND", "We could not find that target role.", 404)
+        await database_session.delete(target)
+        await database_session.flush()
+
     async def get_target(
         self,
         database_session: AsyncSession,

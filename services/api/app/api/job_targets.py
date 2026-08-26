@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Header, Request, status
 
 from app.api.cv_documents import validate_authenticated_csrf
@@ -24,6 +26,26 @@ async def list_job_targets(
         user_id=authenticated_session.principal.user_id,
     )
     return JobTargetListResponse(data=targets)
+
+
+@router.delete("/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job_target(
+    target_id: UUID,
+    request: Request,
+    database_session: DatabaseSession,
+    authenticated_session: AuthenticatedSessionDependency,
+    submitted_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+) -> None:
+    validate_authenticated_csrf(
+        request,
+        authenticated_session=authenticated_session,
+        submitted_csrf_token=submitted_csrf_token,
+    )
+    await job_target_service().delete_target(
+        database_session,
+        user_id=authenticated_session.principal.user_id,
+        target_id=target_id,
+    )
 
 
 @router.post("", response_model=JobTargetSummary, status_code=status.HTTP_201_CREATED)

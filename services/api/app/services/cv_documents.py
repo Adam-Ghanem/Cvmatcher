@@ -12,7 +12,7 @@ from app.schemas.cv_documents import (
     CvDocumentSummary,
     CvDocumentVersionSummary,
 )
-from app.services.object_storage import PrivateObjectStorage, StagedDocument
+from app.services.object_storage import PrivateObjectKey, PrivateObjectStorage, StagedDocument
 
 
 def version_summary(version: CvDocumentVersion) -> CvDocumentVersionSummary:
@@ -119,6 +119,30 @@ class CvDocumentService:
             await self._storage.delete(object_key=object_key)
             raise
         return version_summary(version)
+
+    async def delete_document(
+        self,
+        database_session: AsyncSession,
+        *,
+        document_id: UUID,
+        user_id: UUID,
+    ) -> None:
+        document = await database_session.scalar(
+            select(CvDocument)
+            .where(CvDocument.id == document_id, CvDocument.user_id == user_id)
+            .with_for_update()
+        )
+        if document is None:
+            raise self._not_found_error()
+        versions = await database_session.scalars(
+            select(CvDocumentVersion.private_object_key).where(
+                CvDocumentVersion.document_id == document.id
+            )
+        )
+        for object_key in versions:
+            await self._storage.delete(object_key=PrivateObjectKey(value=object_key))
+        await database_session.delete(document)
+        await database_session.flush()
 
     async def get_document(
         self,

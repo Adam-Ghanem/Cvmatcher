@@ -12,6 +12,7 @@ import {
   apiFetch,
   apiUrl,
   createCvExtraction,
+  deleteCvDocument,
   CvDocument,
   CvDocumentListResponse,
   CvExtraction,
@@ -65,6 +66,8 @@ export function CvWorkspace() {
   const [extractions, setExtractions] = useState<Record<string, CvExtraction | null>>({});
   const [extractionErrors, setExtractionErrors] = useState<Record<string, string>>({});
   const [startingVersionId, setStartingVersionId] = useState<string | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const fetchWorkspace = useCallback(async () => {
     return Promise.all([
@@ -240,6 +243,26 @@ export function CvWorkspace() {
     }
   }
 
+  async function removeDocument(document: CvDocument) {
+    if (!window.confirm(`Delete “${document.title}”, all private versions, and derived analyses? This cannot be undone.`)) {
+      return;
+    }
+    setDeletingDocumentId(document.id);
+    setDeleteError(null);
+    try {
+      await deleteCvDocument(document.id);
+      setDocuments((currentDocuments) => currentDocuments.filter((currentDocument) => currentDocument.id !== document.id));
+    } catch (requestError) {
+      setDeleteError(
+        requestError instanceof ApiRequestError
+          ? requestError.message
+          : "We could not delete this CV. Please try again.",
+      );
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  }
+
   async function signOut() {
     try {
       const csrfToken = await getCsrfToken();
@@ -335,6 +358,7 @@ export function CvWorkspace() {
 
               {isLoading ? <div className="mt-5 space-y-3" aria-label="Loading CV documents"><div className="h-20 animate-pulse rounded-sm bg-surface-subtle" /><div className="h-20 animate-pulse rounded-sm bg-surface-subtle" /></div> : null}
               {loadError ? <div className="mt-5 rounded-sm border border-danger/30 bg-red-50 p-4 text-sm leading-6 text-danger" role="alert"><p>{loadError}</p><button className="mt-2 font-semibold underline underline-offset-4" onClick={() => void loadWorkspace()} type="button">Try again</button></div> : null}
+              {deleteError ? <p className="mt-5 rounded-sm border border-danger/30 bg-red-50 p-4 text-sm leading-6 text-danger" role="alert">{deleteError}</p> : null}
               {!isLoading && !loadError && documents.length === 0 ? <div className="mt-5 rounded-md border border-line bg-surface-subtle p-6"><h3 className="font-semibold">No CVs saved yet</h3><p className="mt-2 max-w-xl text-sm leading-6 text-ink-muted">Your first upload creates a private, versioned starting point. When matching launches, you will choose exactly which version to use.</p><button className="mt-4 text-sm font-semibold text-brand underline decoration-brand/40 underline-offset-4" onClick={() => uploadInputRef.current?.click()} type="button">Choose your first CV</button></div> : null}
               {!isLoading && !loadError && documents.length > 0 ? (
                 <ul className="mt-5 space-y-3">
@@ -349,13 +373,16 @@ export function CvWorkspace() {
                           </p>
                           <p className="mt-3 text-sm text-ink-muted">Saved {formatDate(document.updatedAt)}</p>
                         </div>
-                        <CvExtractionControl
-                          document={document}
-                          extraction={extractions[versionId]}
-                          isStarting={startingVersionId === versionId}
-                          onStart={startExtraction}
-                          statusError={extractionErrors[versionId] ?? null}
-                        />
+                        <div className="mt-4 flex flex-wrap items-center gap-3 sm:mt-0">
+                          <CvExtractionControl
+                            document={document}
+                            extraction={extractions[versionId]}
+                            isStarting={startingVersionId === versionId}
+                            onStart={startExtraction}
+                            statusError={extractionErrors[versionId] ?? null}
+                          />
+                          <button className="text-sm font-semibold text-danger underline underline-offset-4 disabled:cursor-not-allowed disabled:opacity-60" disabled={deletingDocumentId === document.id} onClick={() => void removeDocument(document)} type="button">{deletingDocumentId === document.id ? "Deleting…" : "Delete CV"}</button>
+                        </div>
                       </li>
                     );
                   })}

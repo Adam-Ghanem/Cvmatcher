@@ -160,3 +160,36 @@ def test_upload_rejects_a_body_that_exceeds_the_streaming_limit(client: TestClie
     error = cast(dict[str, object], body["error"])
     assert response.status_code == 413
     assert error["code"] == "UPLOAD_TOO_LARGE"
+
+
+def test_document_owner_can_delete_a_private_document_with_csrf(client: TestClient) -> None:
+    register(client, "candidate@example.com")
+    document = upload_pdf(client)
+
+    response = client.delete(
+        f"/api/v1/cv-documents/{document['id']}",
+        headers={"X-CSRF-Token": csrf_token(client)},
+    )
+    retrieval = client.get(f"/api/v1/cv-documents/{document['id']}")
+
+    assert response.status_code == 204
+    assert retrieval.status_code == 404
+
+
+def test_document_deletion_requires_csrf_and_hides_other_owners_document(
+    client: TestClient,
+    second_client: TestClient,
+) -> None:
+    register(client, "owner@example.com")
+    document = upload_pdf(client)
+    csrf_response = client.delete(f"/api/v1/cv-documents/{document['id']}")
+
+    register(second_client, "other@example.com")
+    cross_owner_response = second_client.delete(
+        f"/api/v1/cv-documents/{document['id']}",
+        headers={"X-CSRF-Token": csrf_token(second_client)},
+    )
+
+    assert csrf_response.status_code == 403
+    assert cross_owner_response.status_code == 404
+    assert cross_owner_response.json()["error"]["code"] == "RESOURCE_NOT_FOUND"

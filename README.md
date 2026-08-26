@@ -115,6 +115,7 @@ No real secrets belong in the repository. Copy `.env.example` to `.env` locally 
 | [`docs/security.md`](docs/security.md) | Implemented controls, Phase 5 analysis boundaries, and deferred requirements. |
 | [`docs/adr/0004-deterministic-evidence-scoring.md`](docs/adr/0004-deterministic-evidence-scoring.md) | Deterministic-v2 scoring and trust-boundary decision. |
 | [`docs/phase-5-implementation-report.md`](docs/phase-5-implementation-report.md) | Phase 5 implementation and verification record. |
+| [`docs/phase-6-implementation-report.md`](docs/phase-6-implementation-report.md) | Phase 6 private-data deletion implementation and verification record. |
 | [`packages/contracts/analysis-contract.md`](packages/contracts/analysis-contract.md) | Implemented public deterministic analysis contract. |
 | [`docs/adr/0001-phase-1-foundation.md`](docs/adr/0001-phase-1-foundation.md) | Initial foundation decisions. |
 | [`docs/adr/0002-authentication-and-secure-cv-intake.md`](docs/adr/0002-authentication-and-secure-cv-intake.md) | Authentication and document-intake threat model. |
@@ -122,4 +123,4 @@ No real secrets belong in the repository. Copy `.env.example` to `.env` locally 
 
 ## Next phase
 
-The next bounded phase should establish user-controlled data lifecycle operations: explicit deletion and retention controls for CV documents, private extractions, target roles, and analyses. It must preserve owner scoping, safe failure handling, and the absence of public document access. AI recommendations remain explicitly out of scope until this privacy foundation and a separate AI safety design review are complete.
+Phase 6 now provides authenticated, CSRF-protected user deletion for private CV documents and target roles, including dependent private lifecycle cleanup. The next bounded phase should define a privacy center and account-level deletion only after a production-grade retention, backup, and erasure design is approved. AI recommendations remain explicitly out of scope until that privacy foundation and a separate AI safety design review are complete.

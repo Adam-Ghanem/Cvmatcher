@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import {
   ApiRequestError,
   createJobTarget,
+  deleteJobTarget,
   JobTarget,
   listJobTargets,
 } from "@/lib/api-client";
@@ -27,6 +28,8 @@ export function JobTargetWorkspace() {
   const [targets, setTargets] = useState<JobTarget[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingTargetId, setDeletingTargetId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -101,6 +104,26 @@ export function JobTargetWorkspace() {
       );
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function removeTarget(target: JobTarget) {
+    if (!window.confirm(`Delete “${target.title}” and its private description? This cannot be undone.`)) {
+      return;
+    }
+    setDeletingTargetId(target.id);
+    setDeleteError(null);
+    try {
+      await deleteJobTarget(target.id);
+      setTargets((currentTargets) => currentTargets.filter((currentTarget) => currentTarget.id !== target.id));
+    } catch (requestError) {
+      setDeleteError(
+        requestError instanceof ApiRequestError
+          ? requestError.message
+          : "We could not delete this target role. Please try again.",
+      );
+    } finally {
+      setDeletingTargetId(null);
     }
   }
 
@@ -187,8 +210,9 @@ export function JobTargetWorkspace() {
         </div>
         {isLoading ? <div className="mt-4 h-20 animate-pulse rounded-sm bg-surface-subtle" aria-label="Loading target roles" /> : null}
         {loadError ? <div className="mt-4 rounded-sm border border-danger/30 bg-red-50 p-4 text-sm leading-6 text-danger" role="alert"><p>{loadError}</p><button className="mt-2 font-semibold underline underline-offset-4" onClick={() => void loadTargets()} type="button">Try again</button></div> : null}
+        {deleteError ? <p className="mt-4 rounded-sm border border-danger/30 bg-red-50 p-4 text-sm leading-6 text-danger" role="alert">{deleteError}</p> : null}
         {!isLoading && !loadError && targets.length === 0 ? <div className="mt-4 rounded-sm border border-line bg-white p-5"><p className="font-semibold">No target roles saved yet</p><p className="mt-1 text-sm leading-6 text-ink-muted">Save one role and its description to create a private comparison target for a future phase.</p></div> : null}
-        {!isLoading && !loadError && targets.length > 0 ? <ul className="mt-4 space-y-3">{targets.map((target) => <li className="rounded-sm border border-line bg-white p-4" key={target.id}><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold">{target.title}</p><p className="mt-1 text-sm text-ink-muted">{[target.company, target.location].filter(Boolean).join(" · ") || "Private target role"}</p></div><p className="text-sm text-ink-muted">Saved {formatDate(target.updatedAt)}</p></div><p className="mt-3 text-sm leading-6 text-ink-muted">{target.jobDescriptionCharacterCount.toLocaleString()} private description characters saved</p></li>)}</ul> : null}
+        {!isLoading && !loadError && targets.length > 0 ? <ul className="mt-4 space-y-3">{targets.map((target) => <li className="rounded-sm border border-line bg-white p-4" key={target.id}><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold">{target.title}</p><p className="mt-1 text-sm text-ink-muted">{[target.company, target.location].filter(Boolean).join(" · ") || "Private target role"}</p></div><div className="flex items-center gap-3"><p className="text-sm text-ink-muted">Saved {formatDate(target.updatedAt)}</p><button className="text-sm font-semibold text-danger underline underline-offset-4 disabled:cursor-not-allowed disabled:opacity-60" disabled={deletingTargetId === target.id} onClick={() => void removeTarget(target)} type="button">{deletingTargetId === target.id ? "Deleting…" : "Delete"}</button></div></div><p className="mt-3 text-sm leading-6 text-ink-muted">{target.jobDescriptionCharacterCount.toLocaleString()} private description characters saved</p></li>)}</ul> : null}
       </div>
     </section>
   );

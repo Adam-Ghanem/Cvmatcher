@@ -83,3 +83,17 @@ def test_job_target_creation_requires_csrf_and_valid_description(client: TestCli
 
     assert csrf_response.status_code == 403
     assert invalid_response.status_code == 422
+
+
+def test_target_owner_can_delete_private_target_with_csrf(client: TestClient) -> None:
+    register(client, "candidate@example.com")
+    target = create_job_target(client)
+
+    response = client.delete(
+        f"/api/v1/job-targets/{target['id']}",
+        headers={"X-CSRF-Token": csrf_token(client)},
+    )
+    listed = client.get("/api/v1/job-targets")
+
+    assert response.status_code == 204
+    assert listed.json()["data"] == []

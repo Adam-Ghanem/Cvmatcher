@@ -4,6 +4,8 @@ import {
   apiFetch,
   createCvExtraction,
   createJobTarget,
+  deleteCvDocument,
+  deleteJobTarget,
   createMatchAnalysis,
   getCvExtraction,
   getMatchAnalysis,
@@ -164,6 +166,26 @@ describe("apiFetch", () => {
     expect(retrieved).toEqual(analysis);
     expect(JSON.stringify(created)).not.toContain("Private CV content");
     expect(JSON.stringify(created)).not.toContain("jobDescription");
+  });
+
+  it("uses protected contracts to delete private CV and target records", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ csrfToken: "csrf-cv" }), { headers: { "content-type": "application/json" }, status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ csrfToken: "csrf-target" }), { headers: { "content-type": "application/json" }, status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteCvDocument("document-id");
+    await deleteJobTarget("target-id");
+
+    const [cvUrl, cvInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const [targetUrl, targetInit] = fetchMock.mock.calls[3] as [string, RequestInit];
+    expect(cvUrl).toContain("/api/v1/cv-documents/document-id");
+    expect(cvInit).toMatchObject({ method: "DELETE", headers: { "X-CSRF-Token": "csrf-cv" } });
+    expect(targetUrl).toContain("/api/v1/job-targets/target-id");
+    expect(targetInit).toMatchObject({ method: "DELETE", headers: { "X-CSRF-Token": "csrf-target" } });
   });
 
   it("sends browser credentials and a correlation identifier by default", async () => {
