@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { CvExtractionControl } from "@/components/app/CvExtractionControl";
+import { JobTargetWorkspace } from "@/components/app/JobTargetWorkspace";
 import {
   ApiRequestError,
   apiFetch,
@@ -360,12 +361,13 @@ export function CvWorkspace() {
                 </ul>
               ) : null}
             </section>
+            <JobTargetWorkspace />
           </section>
 
           <aside className="self-start rounded-md border border-line bg-surface-subtle p-5" aria-labelledby="next-heading">
             <p className="text-sm font-semibold tracking-[0.14em] text-brand">WHAT’S NEXT</p>
             <h2 className="mt-2 text-xl font-semibold" id="next-heading">A clear path, not a black box.</h2>
-            <ol className="mt-5 space-y-4 border-l border-brand pl-4 text-sm"><li><p className="font-semibold">1. Save your CV</p><p className="mt-1 leading-6 text-ink-muted">Create a private source of truth.</p></li><li><p className="font-semibold">2. Choose a target role</p><p className="mt-1 leading-6 text-ink-muted">Arrives in the next product phase.</p></li><li><p className="font-semibold">3. Understand the gap</p><p className="mt-1 leading-6 text-ink-muted">Only with visible evidence and actionable priorities.</p></li></ol>
+            <ol className="mt-5 space-y-4 border-l border-brand pl-4 text-sm"><li><p className="font-semibold">1. Save your CV</p><p className="mt-1 leading-6 text-ink-muted">Create a private source of truth.</p></li><li><p className="font-semibold">2. Define a target role</p><p className="mt-1 leading-6 text-ink-muted">Keep the role description private and ready for a future comparison.</p></li><li><p className="font-semibold">3. Understand the gap</p><p className="mt-1 leading-6 text-ink-muted">Only with visible evidence and actionable priorities.</p></li></ol>
           </aside>
         </div>
       </div>

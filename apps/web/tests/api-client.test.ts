@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   apiFetch,
   createCvExtraction,
+  createJobTarget,
   getCvExtraction,
+  listJobTargets,
 } from "@/lib/api-client";
 
 describe("apiFetch", () => {
@@ -66,6 +68,44 @@ describe("apiFetch", () => {
     expect(createInit.method).toBe("POST");
     expect(createInit.headers).toMatchObject({ "X-CSRF-Token": "csrf-token" });
     expect(extraction.status).toBe("succeeded");
+  });
+
+  it("uses protected API contracts to save and list target roles without returning job text", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrfToken: "csrf-token" }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "target-id", title: "Staff engineer" }), {
+          headers: { "content-type": "application/json" },
+          status: 201,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ id: "target-id", title: "Staff engineer" }] }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createJobTarget({
+      company: "Northstar Systems",
+      jobDescription: "A private, untrusted job description that is long enough to test the request contract.",
+      location: "Remote",
+      title: "Staff engineer",
+    });
+    const targets = await listJobTargets();
+
+    const [createUrl, createInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(createUrl).toContain("/api/v1/job-targets");
+    expect(createInit.method).toBe("POST");
+    expect(createInit.body).toContain("Staff engineer");
+    expect(targets.data[0]?.title).toBe("Staff engineer");
   });
 
   it("sends browser credentials and a correlation identifier by default", async () => {

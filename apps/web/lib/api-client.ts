@@ -41,6 +41,27 @@ export interface CvDocumentListResponse {
   data: CvDocument[];
 }
 
+export interface CreateJobTargetInput {
+  title: string;
+  company?: string;
+  location?: string;
+  jobDescription: string;
+}
+
+export interface JobTarget {
+  id: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  jobDescriptionCharacterCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobTargetListResponse {
+  data: JobTarget[];
+}
+
 export type CvExtractionStatus = "pending" | "processing" | "succeeded" | "failed";
 
 export interface CvExtraction {
@@ -121,6 +142,19 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 export async function getCsrfToken(): Promise<string> {
   const response = await apiFetch<CsrfTokenResponse>("/api/v1/auth/csrf");
   return response.csrfToken;
+}
+
+export async function listJobTargets(): Promise<JobTargetListResponse> {
+  return apiFetch<JobTargetListResponse>("/api/v1/job-targets");
+}
+
+export async function createJobTarget(input: CreateJobTargetInput): Promise<JobTarget> {
+  const csrfToken = await getCsrfToken();
+  return apiFetch<JobTarget>("/api/v1/job-targets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+    body: JSON.stringify(input),
+  });
 }
 
 function cvExtractionPath(documentId: string, versionId: string): string {

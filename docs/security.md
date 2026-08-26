@@ -1,6 +1,6 @@
 # CVMatcher Security Baseline
 
-## Implemented through Phase 3
+## Implemented through Phase 4
 
 | Control | Implementation and scope |
 |---|---|
@@ -19,15 +19,17 @@
 | Parser isolation | PDF/DOCX parsing runs from a worker thread in a short-lived spawned child process. The parent uses an 8-second wall-clock limit and terminates nonresponsive workers. Linux workers apply 4-second CPU and 256 MiB address-space ceilings. |
 | Parser input/output bounds | PDF parsing uses `pypdf` with a 100-page cap and rejects encrypted inputs. DOCX parsing repeats archive structure limits, reads only `word/document.xml`, rejects DTD/entity markers, and caps extracted text at 250,000 characters. |
 | Sensitive text boundary | Extracted CV text is stored only in `cv_extractions.extracted_text`. API response schemas and workspace state expose status and safe metadata only; they never return, log intentionally, or display raw extracted CV text. Parsing failures persist a generic recovery message without deleting the original document. |
+| Target-role intake | `POST /job-targets` derives the user from the validated session and requires CSRF. Its strict schema rejects unknown fields, bounds title/context fields and pasted job-description length, and persists the raw description only under the owner. List responses and the workspace intentionally omit the description. |
+| Prompt-injection boundary | Pasted job descriptions are classified as untrusted private document content. Phase 4 does not parse requirements, invoke tools, render the full text in a list, or place it in an AI prompt. |
 | Verification | CI provisions PostgreSQL, creates the isolated test database, applies Alembic migrations, then runs API lint, strict typecheck, and database-backed tests. The web job runs lint, strict typecheck, unit tests, and production build. |
 
-## Security constraints and intentional Phase 3 limits
+## Security constraints and intentional Phase 4 limits
 
 The local storage adapter remains a private development/test implementation, not production object storage. Production configuration fails rather than silently storing CVs on local disk. A managed private-storage adapter, production secret manager, HTTPS termination, database backups, operational monitoring, malware-scanning policy, and documented retention/deletion operations remain deployment prerequisites.
 
 The parser process limits reduce denial-of-service risk; they are not a malware guarantee or a complete sandbox. The current `resource` CPU/address-space limits are Linux-specific. The parent wall-clock limit remains active on all supported platforms, but production deployment requires an operating-system/container sandbox review, least-privilege process permissions, malware-scanning policy, monitoring, and capacity testing before public launch.
 
-Phase 3 stores text only to support a later deterministic analysis step. Data-subject deletion, retention configuration, encryption-at-rest policy, production object-store erasure verification, and backup lifecycle controls remain required before launch. No API route downloads or publicly shares a CV or its extracted text. No endpoint processes job descriptions, computes a match, uses OpenAI, or accepts AI output. These absences are intentional controls, not incomplete hidden behavior.
+Phase 3 and Phase 4 store sensitive private text only to support a later deterministic analysis step. Data-subject deletion, retention configuration, encryption-at-rest policy, production object-store erasure verification, and backup lifecycle controls remain required before launch. No API route downloads or publicly shares a CV, extracted text, or pasted job description. No endpoint parses job requirements, computes a match, uses OpenAI, or accepts AI output. These absences are intentional controls, not incomplete hidden behavior.
 
 ## Required before AI and matching features
 

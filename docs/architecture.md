@@ -1,6 +1,6 @@
 # CVMatcher Architecture
 
-## Implemented Phase 3 architecture
+## Implemented Phase 4 architecture
 
 CVMatcher is a modular monorepo with a Next.js frontend and a FastAPI backend. The services are independently buildable, but the product remains a deliberately simple single-application architecture: one browser client, one API, one PostgreSQL database, and one private-storage adapter boundary. It does not use microservices, queues, Redis, vector storage, billing infrastructure, or AI orchestration.
 
@@ -11,6 +11,7 @@ flowchart LR
   Web -->|UX route guard only| Browser
   API -->|typed SQLAlchemy queries| DB[(PostgreSQL)]
   API -->|server-only opaque keys| Storage[Private object storage adapter]
+  API -->|private untrusted job text| DB
   API -->|short-lived worker thread| Parser[Constrained child parser]
   Parser -->|private result only| API
   API --> Logs[Redacted structured logs]
@@ -35,9 +36,9 @@ A successful registration or login issues a high-entropy opaque session cookie. 
 
 The Next.js `proxy.ts` provides a browser-level route guard for `/app`, but it is intentionally not the authorization authority. Every protected FastAPI route resolves the session on the server and derives the principal from the validated session.
 
-## Document intake and extraction boundary
+## Document, extraction, and target-role boundary
 
-Phase 2 persists document bytes and safe metadata. Phase 3 adds only explicit private text extraction for one already-owned immutable version. It does **not** render documents, run OCR, extract skills, perform matching, send content to OpenAI, or serve document downloads.
+Phase 2 persists document bytes and safe metadata. Phase 3 adds only explicit private text extraction for one already-owned immutable version. Phase 4 adds explicit private target-role and pasted job-description intake. It does **not** render documents, parse job requirements, run OCR, extract skills, perform matching, send content to OpenAI, or serve document downloads.
 
 | Layer | Implemented responsibility |
 |---|---|
@@ -47,7 +48,8 @@ Phase 2 persists document bytes and safe metadata. Phase 3 adds only explicit pr
 | Private storage | Uses a local development/test adapter with restrictive staging/object permissions and server-generated opaque keys. It exposes no public URL or download route. |
 | Extraction service | Resolves ownership by document and signed-in principal, reads one stored object server-side, then invokes a short-lived spawned child process from a worker thread. The parent enforces an 8-second deadline and terminates overdue workers. |
 | Parser worker | On Linux, applies 4-second CPU and 256 MiB address-space limits. It uses `pypdf` for PDFs, standard ZIP/XML parsing for DOCX, a 100-page PDF ceiling, shared DOCX archive validation, DTD/entity rejection, and a 250,000-character output ceiling. It returns primitive status data only. |
-| PostgreSQL | Stores user-owned logical documents, immutable versions, and one extraction record per version. `cv_extractions.extracted_text` is server-only; public projections expose safe status, source type, character count, completion time, and recovery message only. |
+| Target-role route | Requires the server-derived session and CSRF validation for creation. It validates title, optional context fields, and bounded pasted job-description text; ownership is never client supplied. |
+| PostgreSQL | Stores user-owned logical documents, immutable versions, one extraction record per version, and user-owned target roles. `cv_extractions.extracted_text` and `job_targets.job_description` are server-only; public projections expose safe metadata only. |
 
 ## Database model
 
@@ -59,9 +61,10 @@ Phase 2 persists document bytes and safe metadata. Phase 3 adds only explicit pr
 | `cv_documents` | Logical user-owned CV record. |
 | `cv_document_versions` | Immutable uploaded version metadata and opaque object key. |
 | `cv_extractions` | One private extraction lifecycle record per immutable version, with constrained source type/status values, count, server-only text, safe failure message, and timestamps. |
+| `job_targets` | User-owned target-role metadata and private untrusted pasted job description with a stored character count. |
 | `audit_events` | Existing non-content security-event metadata foundation. |
 
-All document and extraction queries include both the document identifier and the authenticated user ID. An absent, unowned, or not-yet-created extraction returns the same `404` response, so resource existence is not disclosed across tenants. A unique database constraint and version-row lock make the creation flow idempotent for a single immutable version.
+All document, extraction, and target-role queries derive ownership from the authenticated user. Target-role lists filter by that principal and public summaries omit the pasted description. An absent, unowned, or not-yet-created extraction returns the same `404` response, so resource existence is not disclosed across tenants. A unique database constraint and version-row lock make extraction creation idempotent for a single immutable version.
 
 ## Deployment boundary
 

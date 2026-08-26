@@ -111,6 +111,42 @@ Both routes return only safe extraction metadata:
 
 `status` is one of `pending`, `processing`, `succeeded`, or `failed`. No response ever contains extracted text, a private storage key, raw document bytes, parser diagnostics, or an internal stack trace. A missing, unowned, or not-yet-created extraction uses the shared `404 RESOURCE_NOT_FOUND` envelope. A parser failure is persisted as `failed` with a generic recovery message; the original stored document remains unchanged.
 
+## Target-role routes
+
+Target-role routes require the validated opaque session cookie. Creation also requires `X-CSRF-Token`. The API derives ownership exclusively from the authenticated session; browser clients never submit a user ID.
+
+| Method | Route | CSRF | Purpose |
+|---|---|---:|---|
+| `GET` | `/job-targets` | No | Lists safe metadata for the signed-in user’s private target roles. |
+| `POST` | `/job-targets` | Yes | Saves one private, untrusted target role and pasted job description for a future comparison phase. |
+
+Creation accepts a strict JSON object with no unknown fields. `title` is 2–180 characters; optional `company` and `location` are at most 180 characters; `jobDescription` is 80–50,000 characters after whitespace trimming.
+
+```json
+{
+  "title": "Staff platform engineer",
+  "company": "Northstar Systems",
+  "location": "Remote",
+  "jobDescription": "Untrusted private pasted job-description text..."
+}
+```
+
+Creation and listing return safe metadata only:
+
+```json
+{
+  "id": "uuid",
+  "title": "Staff platform engineer",
+  "company": "Northstar Systems",
+  "location": "Remote",
+  "jobDescriptionCharacterCount": 1412,
+  "createdAt": "2026-08-26T00:00:00Z",
+  "updatedAt": "2026-08-26T00:00:00Z"
+}
+```
+
+`jobDescription` is intentionally omitted from all public response contracts. It remains server-side untrusted data for a future deterministic comparison stage; it is not parsed, sent to an LLM, or rendered in target-role lists.
+
 ## Phase boundary
 
-Phase 3 parses only an already-uploaded PDF/DOCX into a server-only working copy. No current endpoint accepts a job description, computes a match, sends data to an LLM, generates recommendations, serves uploaded file bytes, supports billing, runs a background queue, or exposes private CV text. Those boundaries remain deferred to later approved phases.
+Phase 4 collects a user-owned target role and job description but does not parse its requirements, compute a match, send data to an LLM, generate recommendations, serve uploaded file bytes, support billing, run a background queue, or expose private CV/job text. Those boundaries remain deferred to later approved phases.

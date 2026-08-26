@@ -43,7 +43,8 @@ def settings(tmp_path: Path) -> Settings:
 def reset_database() -> Iterator[None]:
     engine = create_engine(sync_database_url())
     truncate_statement = text(
-        "TRUNCATE TABLE cv_extractions, cv_document_versions, cv_documents, user_sessions, "
+        "TRUNCATE TABLE job_targets, cv_extractions, cv_document_versions, cv_documents, "
+        "user_sessions, "
         "password_credentials, "
         "audit_events, users RESTART IDENTITY CASCADE"
     )

@@ -16,6 +16,7 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
             "cv_documents",
             "cv_document_versions",
             "cv_extractions",
+            "job_targets",
         }.issubset(tables)
 
         credential_columns = {
@@ -30,6 +31,12 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
         }
         extraction_constraints = {
             constraint["name"] for constraint in inspector.get_check_constraints("cv_extractions")
+        }
+        job_target_columns = {
+            column["name"] for column in inspector.get_columns("job_targets")
+        }
+        job_target_constraints = {
+            constraint["name"] for constraint in inspector.get_check_constraints("job_targets")
         }
 
         assert "password_hash" in credential_columns
@@ -53,5 +60,12 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
             "ck_cv_extraction_source_type",
             "ck_cv_extraction_character_count_nonnegative",
         }.issubset(extraction_constraints)
+        assert {
+            "user_id",
+            "title",
+            "job_description",
+            "job_description_character_count",
+        }.issubset(job_target_columns)
+        assert "ck_job_target_description_character_count_nonnegative" in job_target_constraints
     finally:
         engine.dispose()

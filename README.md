@@ -1,10 +1,10 @@
 # CVMatcher
 
-CVMatcher is a career intelligence product designed to turn a CV and target role into transparent, evidence-backed priorities and actions. This repository implements **Phase 3: Bounded Private CV Text Extraction** on top of the Phase 1 production foundation and Phase 2 secure identity and CV intake.
+CVMatcher is a career intelligence product designed to turn a CV and target role into transparent, evidence-backed priorities and actions. This repository implements **Phase 4: Secure Target-Role Intake** on top of the Phase 1 foundation, Phase 2 secure identity and CV intake, and Phase 3 bounded CV text extraction.
 
-Phase 3 adds explicit, owner-scoped PDF/DOCX text preparation for one immutable CV version at a time. Parsing runs in a short-lived child process from a worker thread, with an 8-second wall-clock deadline and Linux CPU/address-space limits. The service applies PDF page, DOCX archive/XML, and extracted-character ceilings, persists only a private server-side working copy, and returns status metadata rather than CV text. The workspace makes preparation explicit, communicates safe retry states, and never displays extracted content.
+Phase 4 lets a signed-in user explicitly save a target role and pasted job description as private, untrusted application data. The API validates request size and fields, derives ownership only from the session, persists the raw description server-side, and returns safe role metadata only. The workspace provides responsive target-role creation, loading, empty, error, and saved-state experiences without analysing the description.
 
-It intentionally does **not** render PDFs, perform OCR, accept job descriptions, calculate match scores, call OpenAI, provide recommendations, serve document downloads, add billing, add background workers or queues, add Redis, add vector storage, or introduce Ruflo.
+It intentionally does **not** render PDFs, perform OCR, parse job requirements, calculate match scores, call OpenAI, provide recommendations, serve document downloads, add billing, add background workers or queues, add Redis, add vector storage, or introduce Ruflo.
 
 ## Prerequisites
 
@@ -69,7 +69,8 @@ The frontend runs at `http://localhost:3000`. The API health endpoint is `http:/
 3. Open `/app` to access the protected CV workspace.
 4. Upload one PDF or DOCX CV, up to 10 MiB. The API streams it to private staging, verifies format agreement and safe DOCX markers, then records safe metadata under the signed-in account.
 5. Choose **Prepare CV text** for one owned immutable version. The API parses only that stored document in a short-lived constrained child process and stores a server-only text working copy.
-6. The workspace reports preparation status, safe failure/retry guidance, and character count indirectly through the API contract. It never receives a storage key, document-download link, or the extracted CV text.
+6. Define a target role and paste the job description. The target is private and retained only as future comparison evidence; it is not yet analysed.
+7. The workspace reports preparation status, safe failure/retry guidance, and target metadata. It never receives a storage key, document-download link, extracted CV text, or pasted job-description text from list responses.
 
 ## Quality checks
 
@@ -91,7 +92,7 @@ CI runs the equivalent web checks. Its API job provisions PostgreSQL, creates `c
 
 ## Security baseline
 
-Phase 3 retains the Phase 2 controls and adds server-only text persistence, owner-scoped extraction status reads, an explicit CSRF-protected start action, a one-record-per-document-version invariant, and constrained PDF/DOCX parsing. Extraction uses a short-lived child process with an 8-second wall-clock cap, Linux `RLIMIT_CPU` of 4 seconds, Linux `RLIMIT_AS` of 256 MiB, a 100-page PDF cap, existing DOCX archive validation, DTD/entity rejection, and a 250,000-character output cap. API responses and the workspace expose status and safe metadata only.
+Phase 4 retains the Phase 1–3 controls and adds owner-scoped, CSRF-protected target-role creation with strict title/company/location/description validation. Pasted job descriptions are private untrusted text in `job_targets.job_description`; safe API and workspace projections expose role metadata and a character count only. Phase 3 extraction continues to use a short-lived child process with an 8-second wall-clock cap, Linux CPU/address-space limits, PDF/DOCX bounds, and metadata-only responses.
 
 The local storage adapter is for development/test only. Production requires HTTPS, a secret manager, managed PostgreSQL, a managed private object-storage implementation, observability, backups, and explicitly approved retention/deletion operations before public document intake is enabled.
 
@@ -106,10 +107,11 @@ No real secrets belong in the repository. Copy `.env.example` to `.env` locally 
 | [`docs/security.md`](docs/security.md) | Implemented controls and deferred requirements. |
 | [`docs/adr/0003-safe-cv-text-extraction.md`](docs/adr/0003-safe-cv-text-extraction.md) | Text-extraction threat model and resource-boundary decision. |
 | [`docs/phase-3-implementation-report.md`](docs/phase-3-implementation-report.md) | Phase 3 implementation and verification record. |
+| [`docs/phase-4-implementation-report.md`](docs/phase-4-implementation-report.md) | Phase 4 implementation and verification record. |
 | [`docs/adr/0001-phase-1-foundation.md`](docs/adr/0001-phase-1-foundation.md) | Initial foundation decisions. |
 | [`docs/adr/0002-authentication-and-secure-cv-intake.md`](docs/adr/0002-authentication-and-secure-cv-intake.md) | Authentication and document-intake threat model. |
 | [`packages/contracts/analysis-contract.md`](packages/contracts/analysis-contract.md) | Future deterministic analysis contract boundary. |
 
 ## Next phase
 
-Phase 4 should introduce a bounded target-role/job-description intake foundation with the same ownership, validation, privacy, and error-handling standards. It must not yet perform matching, scoring, OpenAI calls, recommendations, billing, queueing, or vector indexing.
+Phase 5 should introduce a deterministic, non-AI matching and scoring foundation only after the score model, evidence references, score explanations, and adversarial test cases are agreed. It must preserve the private CV/job text boundaries and must not call OpenAI, generate recommendations, add billing, queueing, or vector indexing.

@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, Header, Request, status
+
+from app.api.cv_documents import validate_authenticated_csrf
+from app.api.dependencies import AuthenticatedSessionDependency, DatabaseSession
+from app.schemas.job_targets import CreateJobTargetRequest, JobTargetListResponse, JobTargetSummary
+from app.services.job_targets import JobTargetService
+
+router = APIRouter(prefix="/job-targets", tags=["job targets"])
+
+
+def job_target_service() -> JobTargetService:
+    return JobTargetService()
+
+
+@router.get("", response_model=JobTargetListResponse)
+async def list_job_targets(
+    database_session: DatabaseSession,
+    authenticated_session: AuthenticatedSessionDependency,
+) -> JobTargetListResponse:
+    targets = await job_target_service().list_targets(
+        database_session,
+        user_id=authenticated_session.principal.user_id,
+    )
+    return JobTargetListResponse(data=targets)
+
+
+@router.post("", response_model=JobTargetSummary, status_code=status.HTTP_201_CREATED)
+async def create_job_target(
+    payload: CreateJobTargetRequest,
+    request: Request,
+    database_session: DatabaseSession,
+    authenticated_session: AuthenticatedSessionDependency,
+    submitted_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+) -> JobTargetSummary:
+    validate_authenticated_csrf(
+        request,
+        authenticated_session=authenticated_session,
+        submitted_csrf_token=submitted_csrf_token,
+    )
+    return await job_target_service().create_target(
+        database_session,
+        user_id=authenticated_session.principal.user_id,
+        payload=payload,
+    )

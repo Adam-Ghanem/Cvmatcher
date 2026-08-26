@@ -11,12 +11,20 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
     ...actual,
     apiFetch: vi.fn(),
     createCvExtraction: vi.fn(),
+    createJobTarget: vi.fn(),
     getCvExtraction: vi.fn(),
+    listJobTargets: vi.fn(),
   };
 });
 
 import { CvWorkspace } from "@/components/app/CvWorkspace";
-import { apiFetch, createCvExtraction, getCvExtraction } from "@/lib/api-client";
+import {
+  apiFetch,
+  createCvExtraction,
+  createJobTarget,
+  getCvExtraction,
+  listJobTargets,
+} from "@/lib/api-client";
 
 const document = {
   id: "document-id",
@@ -39,6 +47,7 @@ describe("CvWorkspace", () => {
   });
 
   it("gives a saved CV an explicit preparation action with a privacy-preserving explanation", async () => {
+    vi.mocked(listJobTargets).mockResolvedValue({ data: [] });
     vi.mocked(apiFetch).mockImplementation((path) => {
       if (path === "/api/v1/auth/me") {
         return Promise.resolve({
@@ -75,6 +84,59 @@ describe("CvWorkspace", () => {
     await waitFor(() => {
       expect(createCvExtraction).toHaveBeenCalledWith("document-id", "version-id");
       expect(screen.getByText("Text prepared")).toBeInTheDocument();
+    });
+  });
+
+  it("provides a private target-role form before any future analysis work", async () => {
+    vi.mocked(apiFetch).mockImplementation((path) => {
+      if (path === "/api/v1/auth/me") {
+        return Promise.resolve({
+          user: {
+            createdAt: "2026-08-26T00:00:00Z",
+            email: "candidate@example.com",
+            id: "user-id",
+          },
+        });
+      }
+      if (path === "/api/v1/cv-documents") {
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    vi.mocked(listJobTargets).mockResolvedValue({ data: [] });
+    vi.mocked(createJobTarget).mockResolvedValue({
+      company: "Northstar Systems",
+      createdAt: "2026-08-26T00:00:00Z",
+      id: "target-id",
+      jobDescriptionCharacterCount: 100,
+      location: "Remote",
+      title: "Staff engineer",
+      updatedAt: "2026-08-26T00:00:00Z",
+    });
+
+    render(<CvWorkspace />);
+
+    expect(await screen.findByRole("heading", { name: "Define a target role" })).toBeInTheDocument();
+    const description = screen.getByLabelText("Job description");
+    expect(description).toHaveAttribute("maxLength", "50000");
+    expect(screen.getByText(/remains private and will not be analysed yet/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Role title"), { target: { value: "Staff engineer" } });
+    fireEvent.change(description, {
+      target: {
+        value: "A private, untrusted target-role description that is long enough to satisfy the form validation boundary.",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save target role" }));
+
+    await waitFor(() => {
+      expect(createJobTarget).toHaveBeenCalledWith({
+        company: undefined,
+        jobDescription: "A private, untrusted target-role description that is long enough to satisfy the form validation boundary.",
+        location: undefined,
+        title: "Staff engineer",
+      });
+      expect(screen.getByText("100 private description characters saved")).toBeInTheDocument();
     });
   });
 });
