@@ -62,6 +62,32 @@ export interface JobTargetListResponse {
   data: JobTarget[];
 }
 
+export interface MatchScoreComponent {
+  key: string;
+  label: string;
+  weight: number;
+  score: number;
+  state: "MATCHED" | "PARTIAL" | "EVIDENCE_NOT_FOUND" | "NOT_APPLICABLE";
+  matchedTerms: string[];
+  notFoundTerms: string[];
+  explanation: string;
+}
+
+export interface MatchGap {
+  term: string;
+  state: "NOT_FOUND_IN_PROVIDED_CV";
+  component: string;
+}
+
+export interface MatchAnalysis {
+  id: string;
+  scoringVersion: string;
+  overallScore: number;
+  components: MatchScoreComponent[];
+  gaps: MatchGap[];
+  createdAt: string;
+}
+
 export type CvExtractionStatus = "pending" | "processing" | "succeeded" | "failed";
 
 export interface CvExtraction {
@@ -155,6 +181,22 @@ export async function createJobTarget(input: CreateJobTargetInput): Promise<JobT
     headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
     body: JSON.stringify(input),
   });
+}
+
+export async function createMatchAnalysis(input: {
+  cvDocumentVersionId: string;
+  jobTargetId: string;
+}): Promise<MatchAnalysis> {
+  const csrfToken = await getCsrfToken();
+  return apiFetch<MatchAnalysis>("/api/v1/match-analyses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getMatchAnalysis(analysisId: string): Promise<MatchAnalysis> {
+  return apiFetch<MatchAnalysis>(`/api/v1/match-analyses/${analysisId}`);
 }
 
 function cvExtractionPath(documentId: string, versionId: string): string {

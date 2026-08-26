@@ -12,6 +12,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
     apiFetch: vi.fn(),
     createCvExtraction: vi.fn(),
     createJobTarget: vi.fn(),
+    createMatchAnalysis: vi.fn(),
     getCvExtraction: vi.fn(),
     listJobTargets: vi.fn(),
   };
@@ -22,6 +23,7 @@ import {
   apiFetch,
   createCvExtraction,
   createJobTarget,
+  createMatchAnalysis,
   getCvExtraction,
   listJobTargets,
 } from "@/lib/api-client";
@@ -85,6 +87,84 @@ describe("CvWorkspace", () => {
       expect(createCvExtraction).toHaveBeenCalledWith("document-id", "version-id");
       expect(screen.getByText("Text prepared")).toBeInTheDocument();
     });
+  });
+
+  it("creates a transparent deterministic analysis from a prepared CV and saved target", async () => {
+    vi.mocked(apiFetch).mockImplementation((path) => {
+      if (path === "/api/v1/auth/me") {
+        return Promise.resolve({
+          user: {
+            createdAt: "2026-08-26T00:00:00Z",
+            email: "candidate@example.com",
+            id: "user-id",
+          },
+        });
+      }
+      if (path === "/api/v1/cv-documents") {
+        return Promise.resolve({ data: [document] });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    vi.mocked(getCvExtraction).mockResolvedValue({
+      characterCount: 23,
+      completedAt: "2026-08-26T00:00:01Z",
+      failureMessage: null,
+      id: "extraction-id",
+      sourceType: "docx",
+      status: "succeeded",
+    });
+    vi.mocked(listJobTargets).mockResolvedValue({
+      data: [
+        {
+          company: "Northstar Systems",
+          createdAt: "2026-08-26T00:00:00Z",
+          id: "target-id",
+          jobDescriptionCharacterCount: 100,
+          location: "Remote",
+          title: "Staff engineer",
+          updatedAt: "2026-08-26T00:00:00Z",
+        },
+      ],
+    });
+    vi.mocked(createMatchAnalysis).mockResolvedValue({
+      components: [
+        {
+          explanation: "Exact normalized skills found in the prepared CV.",
+          key: "skills",
+          label: "Skills match",
+          matchedTerms: ["python"],
+          notFoundTerms: ["aws"],
+          score: 50,
+          state: "PARTIAL",
+          weight: 35,
+        },
+      ],
+      createdAt: "2026-08-26T00:00:01Z",
+      gaps: [{ component: "skills", state: "NOT_FOUND_IN_PROVIDED_CV", term: "aws" }],
+      id: "analysis-id",
+      overallScore: 72,
+      scoringVersion: "deterministic-v2",
+    });
+
+    render(<CvWorkspace />);
+
+    expect(await screen.findByRole("heading", { name: "Compare the evidence" })).toBeInTheDocument();
+    await screen.findByRole("option", { name: "Candidate CV · Version 1" });
+    await screen.findByRole("option", { name: "Staff engineer · Northstar Systems · Remote" });
+    fireEvent.change(screen.getByLabelText("Prepared CV"), { target: { value: "version-id" } });
+    fireEvent.change(screen.getByLabelText("Target role"), { target: { value: "target-id" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create evidence match" }));
+
+    await waitFor(() => {
+      expect(createMatchAnalysis).toHaveBeenCalledWith({
+        cvDocumentVersionId: "version-id",
+        jobTargetId: "target-id",
+      });
+      expect(screen.getByText("72% overall evidence match")).toBeInTheDocument();
+      expect(screen.getByText("Not found in the provided CV:")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Private CV content")).not.toBeInTheDocument();
+    expect(screen.queryByText("jobDescription")).not.toBeInTheDocument();
   });
 
   it("provides a private target-role form before any future analysis work", async () => {

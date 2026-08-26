@@ -1,15 +1,15 @@
 # CVMatcher
 
-CVMatcher is a career intelligence product designed to turn a CV and target role into transparent, evidence-backed priorities and actions. This repository implements **Phase 4: Secure Target-Role Intake** on top of the Phase 1 foundation, Phase 2 secure identity and CV intake, and Phase 3 bounded CV text extraction.
+CVMatcher is a career-intelligence product that turns a private CV and a private target role into transparent, evidence-backed priorities. This repository implements **Phase 5: Deterministic Evidence Matching** on top of the Phase 1 foundation, Phase 2 secure identity and CV intake, Phase 3 bounded CV text extraction, and Phase 4 secure target-role intake.
 
-Phase 4 lets a signed-in user explicitly save a target role and pasted job description as private, untrusted application data. The API validates request size and fields, derives ownership only from the session, persists the raw description server-side, and returns safe role metadata only. The workspace provides responsive target-role creation, loading, empty, error, and saved-state experiences without analysing the description.
+Phase 5 lets a signed-in user explicitly pair one prepared CV version with one saved target role. The API computes and persists an owner-scoped `deterministic-v2` result using fixed, source-controlled exact-match rules. The workspace presents a reproducible overall evidence match, five weighted components, bounded normalized evidence terms, and gaps labelled **“Not found in the provided CV.”** It is a planning aid, not an interview, employment, or hiring prediction.
 
-It intentionally does **not** render PDFs, perform OCR, parse job requirements, calculate match scores, call OpenAI, provide recommendations, serve document downloads, add billing, add background workers or queues, add Redis, add vector storage, or introduce Ruflo.
+The implementation intentionally does **not** render PDFs, perform OCR, call OpenAI, use embeddings or vector storage, infer experience or qualifications, generate recommendations, modify source documents, add billing, serve document downloads, add background workers or queues, add Redis, or introduce Ruflo.
 
 ## Prerequisites
 
 | Tool | Supported version |
-|---|---|
+|---|---:|
 | Node.js | 22.x |
 | pnpm | 11.21.0 |
 | Python | 3.12.x |
@@ -62,15 +62,16 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 The frontend runs at `http://localhost:3000`. The API health endpoint is `http://localhost:8000/api/v1/health`; readiness is `http://localhost:8000/api/v1/ready` and reports ready only after PostgreSQL is reachable.
 
-## Phase 3 user flow
+## Phase 5 user flow
 
 1. Open `/auth/register` to create a local account, or `/auth/login` to sign in.
-2. The API creates an Argon2 password credential and issues an opaque, revocable httpOnly session cookie.
-3. Open `/app` to access the protected CV workspace.
-4. Upload one PDF or DOCX CV, up to 10 MiB. The API streams it to private staging, verifies format agreement and safe DOCX markers, then records safe metadata under the signed-in account.
-5. Choose **Prepare CV text** for one owned immutable version. The API parses only that stored document in a short-lived constrained child process and stores a server-only text working copy.
-6. Define a target role and paste the job description. The target is private and retained only as future comparison evidence; it is not yet analysed.
-7. The workspace reports preparation status, safe failure/retry guidance, and target metadata. It never receives a storage key, document-download link, extracted CV text, or pasted job-description text from list responses.
+2. Upload a PDF or DOCX CV, up to 10 MiB. The API stores safe metadata and private bytes under the signed-in account.
+3. Choose **Prepare CV text** for one owned immutable version. Parsing is bounded and the extracted text remains server-only.
+4. Define a target role and paste a job description. The raw description remains private and is never returned in target lists.
+5. Under **Compare the evidence**, choose one prepared CV version and one saved target role, then choose **Create evidence match**.
+6. Review the deterministic-v2 result: skills (35%), explicit experience evidence (20%), controlled keywords (25%), education (10%), and ATS-ready structural signals (10%). Use **How we calculated this** to inspect the fixed method.
+
+The browser receives only safe document/target metadata, normalized comparison evidence, and bounded gap terms. It never receives raw CV text, raw job-description text, storage keys, document URLs, or private parser output.
 
 ## Quality checks
 
@@ -86,13 +87,20 @@ cd services/api
 ruff check .
 mypy app
 pytest
+
+# Dependency checks
+cd ../..
+pnpm audit --audit-level high
+pip3 check
 ```
 
 CI runs the equivalent web checks. Its API job provisions PostgreSQL, creates `cvmatcher_test`, applies `alembic upgrade head`, then runs lint, strict typechecking, and database-backed tests.
 
 ## Security baseline
 
-Phase 4 retains the Phase 1–3 controls and adds owner-scoped, CSRF-protected target-role creation with strict title/company/location/description validation. Pasted job descriptions are private untrusted text in `job_targets.job_description`; safe API and workspace projections expose role metadata and a character count only. Phase 3 extraction continues to use a short-lived child process with an 8-second wall-clock cap, Linux CPU/address-space limits, PDF/DOCX bounds, and metadata-only responses.
+Phase 5 retains the Phase 1–4 controls and adds a server-owned deterministic analysis boundary. Creating an analysis requires authentication and CSRF validation. The service owner-scopes the CV version and target role, requires a successful private extraction, uses only deterministic local rules, and persists only a private derived result. The API exposes no raw source text and returns uniform `404 RESOURCE_NOT_FOUND` responses for inaccessible CV versions, target roles, and analyses.
+
+`deterministic-v2` uses only fixed source-controlled vocabularies and exact normalized terms. Target and CV text are untrusted document data, not instructions. The analysis response labels unmatched requirements as **“Not found in the provided CV”** and never makes a factual claim about the person behind the CV.
 
 The local storage adapter is for development/test only. Production requires HTTPS, a secret manager, managed PostgreSQL, a managed private object-storage implementation, observability, backups, and explicitly approved retention/deletion operations before public document intake is enabled.
 
@@ -102,16 +110,16 @@ No real secrets belong in the repository. Copy `.env.example` to `.env` locally 
 
 | Document | Purpose |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | Actual Phase 3 component, trust-boundary, and data architecture. |
-| [`docs/api.md`](docs/api.md) | Implemented versioned API surface and response contracts. |
-| [`docs/security.md`](docs/security.md) | Implemented controls and deferred requirements. |
-| [`docs/adr/0003-safe-cv-text-extraction.md`](docs/adr/0003-safe-cv-text-extraction.md) | Text-extraction threat model and resource-boundary decision. |
-| [`docs/phase-3-implementation-report.md`](docs/phase-3-implementation-report.md) | Phase 3 implementation and verification record. |
-| [`docs/phase-4-implementation-report.md`](docs/phase-4-implementation-report.md) | Phase 4 implementation and verification record. |
+| [`docs/architecture.md`](docs/architecture.md) | Implemented Phase 5 component, trust-boundary, data, and persistence architecture. |
+| [`docs/api.md`](docs/api.md) | Implemented versioned API surface, including match-analysis requests and metadata-only responses. |
+| [`docs/security.md`](docs/security.md) | Implemented controls, Phase 5 analysis boundaries, and deferred requirements. |
+| [`docs/adr/0004-deterministic-evidence-scoring.md`](docs/adr/0004-deterministic-evidence-scoring.md) | Deterministic-v2 scoring and trust-boundary decision. |
+| [`docs/phase-5-implementation-report.md`](docs/phase-5-implementation-report.md) | Phase 5 implementation and verification record. |
+| [`packages/contracts/analysis-contract.md`](packages/contracts/analysis-contract.md) | Implemented public deterministic analysis contract. |
 | [`docs/adr/0001-phase-1-foundation.md`](docs/adr/0001-phase-1-foundation.md) | Initial foundation decisions. |
 | [`docs/adr/0002-authentication-and-secure-cv-intake.md`](docs/adr/0002-authentication-and-secure-cv-intake.md) | Authentication and document-intake threat model. |
-| [`packages/contracts/analysis-contract.md`](packages/contracts/analysis-contract.md) | Future deterministic analysis contract boundary. |
+| [`docs/adr/0003-safe-cv-text-extraction.md`](docs/adr/0003-safe-cv-text-extraction.md) | Text-extraction threat model and resource-boundary decision. |
 
 ## Next phase
 
-Phase 5 should introduce a deterministic, non-AI matching and scoring foundation only after the score model, evidence references, score explanations, and adversarial test cases are agreed. It must preserve the private CV/job text boundaries and must not call OpenAI, generate recommendations, add billing, queueing, or vector indexing.
+The next bounded phase should establish user-controlled data lifecycle operations: explicit deletion and retention controls for CV documents, private extractions, target roles, and analyses. It must preserve owner scoping, safe failure handling, and the absence of public document access. AI recommendations remain explicitly out of scope until this privacy foundation and a separate AI safety design review are complete.

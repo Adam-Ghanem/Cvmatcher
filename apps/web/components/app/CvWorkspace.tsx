@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 
+import { AnalysisWorkspace } from "@/components/app/AnalysisWorkspace";
 import { CvExtractionControl } from "@/components/app/CvExtractionControl";
 import { JobTargetWorkspace } from "@/components/app/JobTargetWorkspace";
 import {
@@ -362,6 +363,11 @@ export function CvWorkspace() {
               ) : null}
             </section>
             <JobTargetWorkspace />
+            <AnalysisWorkspace
+              documents={documents}
+              extractions={extractions}
+              isDocumentsLoading={isLoading}
+            />
           </section>
 
           <aside className="self-start rounded-md border border-line bg-surface-subtle p-5" aria-labelledby="next-heading">

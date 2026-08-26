@@ -4,7 +4,9 @@ import {
   apiFetch,
   createCvExtraction,
   createJobTarget,
+  createMatchAnalysis,
   getCvExtraction,
+  getMatchAnalysis,
   listJobTargets,
 } from "@/lib/api-client";
 
@@ -106,6 +108,62 @@ describe("apiFetch", () => {
     expect(createInit.method).toBe("POST");
     expect(createInit.body).toContain("Staff engineer");
     expect(targets.data[0]?.title).toBe("Staff engineer");
+  });
+
+  it("uses protected contracts to create and retrieve deterministic analysis metadata", async () => {
+    const analysis = {
+      id: "analysis-id",
+      scoringVersion: "deterministic-v2",
+      overallScore: 72,
+      components: [],
+      gaps: [],
+      createdAt: "2026-08-26T00:00:00Z",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrfToken: "csrf-token" }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(analysis), {
+          headers: { "content-type": "application/json" },
+          status: 201,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(analysis), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const created = await createMatchAnalysis({
+      cvDocumentVersionId: "version-id",
+      jobTargetId: "target-id",
+    });
+    const retrieved = await getMatchAnalysis("analysis-id");
+
+    const [createUrl, createInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const [getUrl, getInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(createUrl).toContain("/api/v1/match-analyses");
+    expect(createInit.method).toBe("POST");
+    expect(createInit.headers).toMatchObject({
+      "Content-Type": "application/json",
+      "X-CSRF-Token": "csrf-token",
+    });
+    expect(createInit.body).toBe(
+      JSON.stringify({ cvDocumentVersionId: "version-id", jobTargetId: "target-id" }),
+    );
+    expect(getUrl).toContain("/api/v1/match-analyses/analysis-id");
+    expect(getInit.method).toBeUndefined();
+    expect(created).toEqual(analysis);
+    expect(retrieved).toEqual(analysis);
+    expect(JSON.stringify(created)).not.toContain("Private CV content");
+    expect(JSON.stringify(created)).not.toContain("jobDescription");
   });
 
   it("sends browser credentials and a correlation identifier by default", async () => {

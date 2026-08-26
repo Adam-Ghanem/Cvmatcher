@@ -38,19 +38,7 @@ All implemented routes are versioned under `/api/v1`. Success and error payloads
 }
 ```
 
-Successful account responses return only public identity fields:
-
-```json
-{
-  "user": {
-    "id": "uuid",
-    "email": "candidate@example.com",
-    "createdAt": "2026-08-26T00:00:00Z"
-  }
-}
-```
-
-The browser receives an httpOnly `cvmatcher_session` cookie and a readable `cvmatcher_csrf` cookie. Every state-changing browser call sends the matching token in `X-CSRF-Token`. Raw session tokens, password hashes, session digests, CSRF digests, storage keys, and auth subjects never appear in API responses.
+Successful account responses return only public identity fields. The browser receives an httpOnly `cvmatcher_session` cookie and a readable `cvmatcher_csrf` cookie. Every state-changing browser call sends the matching token in `X-CSRF-Token`. Raw session tokens, password hashes, session digests, CSRF digests, storage keys, and auth subjects never appear in API responses.
 
 ## CV document routes
 
@@ -64,28 +52,7 @@ All document routes require the validated opaque session cookie. Upload routes a
 | `GET` | `/cv-documents/{document_id}/versions` | Lists immutable safe metadata for all versions of one owned document. |
 | `POST` | `/cv-documents/{document_id}/versions` | Streams another PDF or DOCX as the next immutable version. Multipart field: `file`. |
 
-Uploads are limited to **10 MiB**. Phase 2 accepts only a `.pdf` with `application/pdf` and the `%PDF-` byte signature, or a `.docx` with the canonical Office MIME type, ZIP signature, and safe Office container markers. Phase 2 does not parse document text or offer document downloads.
-
-A document response exposes safe metadata only:
-
-```json
-{
-  "id": "uuid",
-  "title": "candidate-cv",
-  "createdAt": "2026-08-26T00:00:00Z",
-  "updatedAt": "2026-08-26T00:00:00Z",
-  "latestVersion": {
-    "id": "uuid",
-    "versionNumber": 1,
-    "originalFilename": "candidate-cv.pdf",
-    "contentType": "application/pdf",
-    "byteSize": 183204,
-    "uploadedAt": "2026-08-26T00:00:00Z"
-  }
-}
-```
-
-For a missing or unowned document, the API returns the same `404 RESOURCE_NOT_FOUND` envelope. This avoids cross-user document-existence disclosure.
+Uploads are limited to **10 MiB**. The API accepts only a `.pdf` with `application/pdf` and the `%PDF-` signature, or a `.docx` with the canonical Office MIME type, ZIP signature, and safe Office container markers. Document responses expose safe metadata only, never raw bytes, storage keys, or download URLs. Missing and unowned documents share `404 RESOURCE_NOT_FOUND`.
 
 ## CV extraction routes
 
@@ -96,7 +63,7 @@ Extraction routes require the validated opaque session cookie. Starting extracti
 | `GET` | `/cv-documents/{document_id}/versions/{version_id}/extraction` | No | Returns safe metadata for an existing owned extraction record without parsing again. |
 | `POST` | `/cv-documents/{document_id}/versions/{version_id}/extraction` | Yes | Explicitly creates or retries constrained private text preparation for an owned immutable version. A successful existing record is reused. |
 
-Both routes return only safe extraction metadata:
+Both routes return safe extraction metadata only:
 
 ```json
 {
@@ -109,7 +76,7 @@ Both routes return only safe extraction metadata:
 }
 ```
 
-`status` is one of `pending`, `processing`, `succeeded`, or `failed`. No response ever contains extracted text, a private storage key, raw document bytes, parser diagnostics, or an internal stack trace. A missing, unowned, or not-yet-created extraction uses the shared `404 RESOURCE_NOT_FOUND` envelope. A parser failure is persisted as `failed` with a generic recovery message; the original stored document remains unchanged.
+`status` is one of `pending`, `processing`, `succeeded`, or `failed`. No response contains extracted text, a private storage key, raw document bytes, parser diagnostics, or an internal stack trace. A missing, unowned, or not-yet-created extraction uses the shared `404 RESOURCE_NOT_FOUND` envelope.
 
 ## Target-role routes
 
@@ -118,7 +85,7 @@ Target-role routes require the validated opaque session cookie. Creation also re
 | Method | Route | CSRF | Purpose |
 |---|---|---:|---|
 | `GET` | `/job-targets` | No | Lists safe metadata for the signed-in user’s private target roles. |
-| `POST` | `/job-targets` | Yes | Saves one private, untrusted target role and pasted job description for a future comparison phase. |
+| `POST` | `/job-targets` | Yes | Saves one private, untrusted target role and pasted job description. |
 
 Creation accepts a strict JSON object with no unknown fields. `title` is 2–180 characters; optional `company` and `location` are at most 180 characters; `jobDescription` is 80–50,000 characters after whitespace trimming.
 
@@ -131,22 +98,60 @@ Creation accepts a strict JSON object with no unknown fields. `title` is 2–180
 }
 ```
 
-Creation and listing return safe metadata only:
+Creation and listing return safe metadata including `jobDescriptionCharacterCount`; `jobDescription` is intentionally omitted from every public target response.
+
+## Deterministic match-analysis routes
+
+Match-analysis routes require the validated opaque session cookie. Creating or reusing an analysis also requires `X-CSRF-Token`. The server derives ownership from the session, never from request data. CV and target references belonging to another user are indistinguishable from missing resources.
+
+| Method | Route | CSRF | Purpose |
+|---|---|---:|---|
+| `POST` | `/match-analyses` | Yes | Creates or reuses the `deterministic-v2` analysis for one owned CV version and one owned target role. |
+| `GET` | `/match-analyses/{analysis_id}` | No | Retrieves one owned persisted analysis result. |
+
+Creation accepts exactly this strict JSON object. Unknown fields are rejected.
+
+```json
+{
+  "cvDocumentVersionId": "uuid",
+  "jobTargetId": "uuid"
+}
+```
+
+A successful response returns metadata-only, bounded analysis evidence. It does not include either source text, resource IDs, storage keys, file URLs, or user IDs.
 
 ```json
 {
   "id": "uuid",
-  "title": "Staff platform engineer",
-  "company": "Northstar Systems",
-  "location": "Remote",
-  "jobDescriptionCharacterCount": 1412,
-  "createdAt": "2026-08-26T00:00:00Z",
-  "updatedAt": "2026-08-26T00:00:00Z"
+  "scoringVersion": "deterministic-v2",
+  "overallScore": 88,
+  "components": [
+    {
+      "key": "skills",
+      "label": "Skills match",
+      "weight": 35,
+      "score": 100,
+      "state": "MATCHED",
+      "matchedTerms": ["docker", "python"],
+      "notFoundTerms": [],
+      "explanation": "Uses exact normalized evidence terms from the provided CV and target description."
+    }
+  ],
+  "gaps": [
+    {
+      "term": "automation",
+      "state": "NOT_FOUND_IN_PROVIDED_CV",
+      "component": "keywords"
+    }
+  ],
+  "createdAt": "2026-08-26T00:00:00Z"
 }
 ```
 
-`jobDescription` is intentionally omitted from all public response contracts. It remains server-side untrusted data for a future deterministic comparison stage; it is not parsed, sent to an LLM, or rendered in target-role lists.
+Component `state` is one of `MATCHED`, `PARTIAL`, `EVIDENCE_NOT_FOUND`, or `NOT_APPLICABLE`. Gap state is always `NOT_FOUND_IN_PROVIDED_CV`; it means evidence was not found in the submitted CV text, not that the person lacks the skill or credential. `overallScore` and every component score are integers in the inclusive `0`–`100` range. The score is an explainable planning aid, not a hiring or interview prediction.
 
-## Phase boundary
+`POST /match-analyses` returns `409 CV_TEXT_NOT_READY` when the selected owned version has no successful non-empty private extraction. It returns `404 RESOURCE_NOT_FOUND` for absent or inaccessible CV versions, targets, and analysis IDs. Repeating the same owned CV version, target role, and scoring version returns the existing persisted result rather than creating a duplicate.
 
-Phase 4 collects a user-owned target role and job description but does not parse its requirements, compute a match, send data to an LLM, generate recommendations, serve uploaded file bytes, support billing, run a background queue, or expose private CV/job text. Those boundaries remain deferred to later approved phases.
+## Deliberate boundaries
+
+The implemented API does not call an LLM, use semantic retrieval, infer qualifications, generate recommendations, modify source CVs or target roles, serve document bytes, add billing, run a background queue, or expose raw private CV/job text. These are intentional security and product boundaries, not hidden behavior.

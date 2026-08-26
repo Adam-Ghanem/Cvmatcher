@@ -12,6 +12,7 @@ from app.schemas.cv_documents import (
     CvDocumentVersionSummary,
 )
 from app.schemas.extraction import CvExtractionResponse
+from app.schemas.match_analyses import CreateMatchAnalysisRequest, MatchAnalysisResponse
 
 __all__ = [
     "ApiErrorDetail",
@@ -24,6 +25,8 @@ __all__ = [
     "CvDocumentVersionSummary",
     "CvDocumentVersionsResponse",
     "CvExtractionResponse",
+    "CreateMatchAnalysisRequest",
+    "MatchAnalysisResponse",
     "HealthResponse",
     "PublicUser",
     "ReadinessResponse",
