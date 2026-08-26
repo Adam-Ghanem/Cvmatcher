@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -17,6 +17,7 @@ class MatchAnalysis(Base):
 
     __tablename__ = "match_analyses"
     __table_args__ = (
+        Index("ix_match_analyses_user_created_id", "user_id", "created_at", "id"),
         UniqueConstraint(
             "cv_document_version_id",
             "job_target_id",

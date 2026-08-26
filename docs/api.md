@@ -119,6 +119,7 @@ Match-analysis routes require the validated opaque session cookie. Creating or r
 | Method | Route | CSRF | Purpose |
 |---|---|---:|---|
 | `POST` | `/match-analyses` | Yes | Creates or reuses the `deterministic-v2` analysis for one owned CV version and one owned target role. |
+| `GET` | `/match-analyses` | No | Lists a cursor-paginated history of owned deterministic analysis summaries. Query parameters: `limit` (1–50, default 20) and optional `cursor`. |
 | `GET` | `/match-analyses/{analysis_id}` | No | Retrieves one owned persisted analysis result. |
 
 Creation accepts exactly this strict JSON object. Unknown fields are rejected.
@@ -130,7 +131,7 @@ Creation accepts exactly this strict JSON object. Unknown fields are rejected.
 }
 ```
 
-A successful response returns metadata-only, bounded analysis evidence. It does not include either source text, resource IDs, storage keys, file URLs, or user IDs.
+A successful detail response returns metadata-only, bounded analysis evidence. It does not include either source text, resource IDs, storage keys, file URLs, or user IDs.
 
 ```json
 {
@@ -161,6 +162,8 @@ A successful response returns metadata-only, bounded analysis evidence. It does 
 ```
 
 Component `state` is one of `MATCHED`, `PARTIAL`, `EVIDENCE_NOT_FOUND`, or `NOT_APPLICABLE`. Gap state is always `NOT_FOUND_IN_PROVIDED_CV`; it means evidence was not found in the submitted CV text, not that the person lacks the skill or credential. `overallScore` and every component score are integers in the inclusive `0`–`100` range. The score is an explainable planning aid, not a hiring or interview prediction.
+
+Analysis-history responses use keyset pagination ordered by `createdAt` and analysis ID, both descending. `nextCursor` is either a safe opaque analysis UUID for the next page or `null`. A history item returns only the analysis ID, scoring version, overall score, safe CV document title and version number, safe target title, and creation timestamp. It does not return the CV/job source text, target description, input resource IDs, private parser data, or complete result payload. A cursor that is missing or owned by another account returns the same `404 RESOURCE_NOT_FOUND` response.
 
 `POST /match-analyses` returns `409 CV_TEXT_NOT_READY` when the selected owned version has no analysis-eligible private extraction, including a readiness state of `blocked`. It returns `404 RESOURCE_NOT_FOUND` for absent or inaccessible CV versions, targets, and analysis IDs. Repeating the same owned CV version, target role, and scoring version returns the existing persisted result rather than creating a duplicate.
 

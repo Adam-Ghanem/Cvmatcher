@@ -164,6 +164,101 @@ def test_successful_but_unreadable_extraction_cannot_create_analysis(client: Tes
     assert response.json()["error"]["code"] == "CV_TEXT_NOT_READY"
 
 
+def test_owner_can_page_through_private_analysis_history_without_source_text(
+    client: TestClient,
+) -> None:
+    register(client, "history@example.com")
+    _, version_id = create_ready_cv_version(client)
+    first_target = create_job_target(client, title="First platform target")
+    second_target = create_job_target(client, title="Second platform target")
+    first_analysis = cast(
+        dict[str, object],
+        create_analysis(
+            client,
+            cv_document_version_id=version_id,
+            job_target_id=str(first_target["id"]),
+        ).json(),
+    )
+    second_analysis = cast(
+        dict[str, object],
+        create_analysis(
+            client,
+            cv_document_version_id=version_id,
+            job_target_id=str(second_target["id"]),
+        ).json(),
+    )
+
+    first_page = client.get("/api/v1/match-analyses?limit=1")
+    first_page_body = cast(dict[str, object], first_page.json())
+    first_page_data = cast(list[dict[str, object]], first_page_body["data"])
+    cursor = cast(str, first_page_body["nextCursor"])
+    second_page = client.get(f"/api/v1/match-analyses?limit=1&cursor={cursor}")
+    second_page_body = cast(dict[str, object], second_page.json())
+    second_page_data = cast(list[dict[str, object]], second_page_body["data"])
+
+    assert first_page.status_code == 200
+    assert second_page.status_code == 200
+    assert len(first_page_data) == 1
+    assert len(second_page_data) == 1
+    assert {first_page_data[0]["id"], second_page_data[0]["id"]} == {
+        first_analysis["id"],
+        second_analysis["id"],
+    }
+    assert first_page_data[0]["id"] != second_page_data[0]["id"]
+    assert first_page_data[0]["cvDocumentTitle"] == "candidate-cv"
+    assert {first_page_data[0]["targetTitle"], second_page_data[0]["targetTitle"]} == {
+        "First platform target",
+        "Second platform target",
+    }
+    assert second_page_body["nextCursor"] is None
+    assert PRIVATE_CV_TEXT not in first_page.text
+    assert "Lead the platform engineering function" not in first_page.text
+    assert "cvDocumentVersionId" not in first_page.text
+    assert "jobTargetId" not in first_page.text
+
+
+def test_analysis_history_is_owner_scoped_and_rejects_foreign_cursors(
+    client: TestClient,
+    second_client: TestClient,
+) -> None:
+    register(client, "history-owner@example.com")
+    _, owner_version_id = create_ready_cv_version(client)
+    owner_target = create_job_target(client, title="Owner history target")
+    owner_analysis = cast(
+        dict[str, object],
+        create_analysis(
+            client,
+            cv_document_version_id=owner_version_id,
+            job_target_id=str(owner_target["id"]),
+        ).json(),
+    )
+
+    register(second_client, "history-other@example.com")
+    empty_history = second_client.get("/api/v1/match-analyses")
+    foreign_cursor_history = second_client.get(
+        f"/api/v1/match-analyses?cursor={owner_analysis['id']}"
+    )
+
+    assert empty_history.status_code == 200
+    assert empty_history.json() == {"data": [], "nextCursor": None}
+    assert foreign_cursor_history.status_code == 404
+    assert foreign_cursor_history.json()["error"]["code"] == "RESOURCE_NOT_FOUND"
+
+
+def test_analysis_history_requires_authentication_and_bounded_pagination(
+    client: TestClient,
+) -> None:
+    unauthenticated_response = client.get("/api/v1/match-analyses")
+
+    register(client, "history-bounds@example.com")
+    oversized_limit_response = client.get("/api/v1/match-analyses?limit=51")
+    malformed_cursor_response = client.get("/api/v1/match-analyses?cursor=not-a-uuid")
+
+    assert unauthenticated_response.status_code == 401
+    assert oversized_limit_response.status_code == 422
+    assert malformed_cursor_response.status_code == 422
+
+
 def test_match_analyses_are_invisible_across_owners(
     client: TestClient,
     second_client: TestClient,

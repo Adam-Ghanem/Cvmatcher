@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiException
@@ -11,7 +11,12 @@ from app.models.cv_document import CvDocument, CvDocumentVersion
 from app.models.cv_extraction import CvExtraction
 from app.models.job_target import JobTarget
 from app.models.match_analysis import MatchAnalysis
-from app.schemas.match_analyses import CreateMatchAnalysisRequest, MatchAnalysisResponse
+from app.schemas.match_analyses import (
+    CreateMatchAnalysisRequest,
+    MatchAnalysisHistoryItem,
+    MatchAnalysisHistoryResponse,
+    MatchAnalysisResponse,
+)
 from app.services.cv_extraction import derive_readiness
 from app.services.deterministic_scoring import SCORING_VERSION, calculate_deterministic_score
 
@@ -87,6 +92,74 @@ class MatchAnalysisService:
         await database_session.flush()
         await database_session.refresh(analysis)
         return analysis_response(analysis)
+
+    async def list_history(
+        self,
+        database_session: AsyncSession,
+        *,
+        user_id: UUID,
+        limit: int,
+        cursor: UUID | None,
+    ) -> MatchAnalysisHistoryResponse:
+        cursor_analysis: MatchAnalysis | None = None
+        if cursor is not None:
+            cursor_analysis = await database_session.scalar(
+                select(MatchAnalysis).where(
+                    MatchAnalysis.id == cursor,
+                    MatchAnalysis.user_id == user_id,
+                )
+            )
+            if cursor_analysis is None:
+                raise ApiException("RESOURCE_NOT_FOUND", "We could not find that analysis.", 404)
+
+        history_query = (
+            select(
+                MatchAnalysis,
+                CvDocument.title,
+                CvDocumentVersion.version_number,
+                JobTarget.title,
+            )
+            .join(
+                CvDocumentVersion,
+                CvDocumentVersion.id == MatchAnalysis.cv_document_version_id,
+            )
+            .join(CvDocument, CvDocument.id == CvDocumentVersion.document_id)
+            .join(JobTarget, JobTarget.id == MatchAnalysis.job_target_id)
+            .where(
+                MatchAnalysis.user_id == user_id,
+                CvDocument.user_id == user_id,
+                JobTarget.user_id == user_id,
+            )
+            .order_by(MatchAnalysis.created_at.desc(), MatchAnalysis.id.desc())
+            .limit(limit + 1)
+        )
+        if cursor_analysis is not None:
+            history_query = history_query.where(
+                or_(
+                    MatchAnalysis.created_at < cursor_analysis.created_at,
+                    and_(
+                        MatchAnalysis.created_at == cursor_analysis.created_at,
+                        MatchAnalysis.id < cursor_analysis.id,
+                    ),
+                )
+            )
+
+        rows = (await database_session.execute(history_query)).tuples().all()
+        page_rows = rows[:limit]
+        items = [
+            MatchAnalysisHistoryItem(
+                id=analysis.id,
+                scoring_version=analysis.scoring_version,
+                overall_score=analysis.overall_score,
+                cv_document_title=document_title,
+                cv_version_number=version_number,
+                target_title=target_title,
+                created_at=analysis.created_at,
+            )
+            for analysis, document_title, version_number, target_title in page_rows
+        ]
+        next_cursor = page_rows[-1][0].id if len(rows) > limit else None
+        return MatchAnalysisHistoryResponse(data=items, next_cursor=next_cursor)
 
     async def get_owned(
         self,

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Request, status
+from fastapi import APIRouter, Header, Query, Request, status
 
 from app.api.cv_documents import validate_authenticated_csrf
 from app.api.dependencies import AuthenticatedSessionDependency, DatabaseSession
-from app.schemas.match_analyses import CreateMatchAnalysisRequest, MatchAnalysisResponse
+from app.schemas.match_analyses import (
+    CreateMatchAnalysisRequest,
+    MatchAnalysisHistoryResponse,
+    MatchAnalysisResponse,
+)
 from app.services.match_analyses import MatchAnalysisService
 
 router = APIRouter(prefix="/match-analyses", tags=["match analyses"])
@@ -29,6 +33,21 @@ async def create_match_analysis(
         database_session,
         user_id=authenticated_session.principal.user_id,
         payload=payload,
+    )
+
+
+@router.get("", response_model=MatchAnalysisHistoryResponse)
+async def list_match_analysis_history(
+    database_session: DatabaseSession,
+    authenticated_session: AuthenticatedSessionDependency,
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: UUID | None = None,
+) -> MatchAnalysisHistoryResponse:
+    return await MatchAnalysisService().list_history(
+        database_session,
+        user_id=authenticated_session.principal.user_id,
+        limit=limit,
+        cursor=cursor,
     )
 
 

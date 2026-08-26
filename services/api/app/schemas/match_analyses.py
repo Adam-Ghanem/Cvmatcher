@@ -31,6 +31,25 @@ class GapResponse(BaseModel):
     component: str
 
 
+class MatchAnalysisHistoryItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: UUID
+    scoring_version: str = Field(alias="scoringVersion")
+    overall_score: int = Field(alias="overallScore", ge=0, le=100)
+    cv_document_title: str = Field(alias="cvDocumentTitle")
+    cv_version_number: int = Field(alias="cvVersionNumber", ge=1)
+    target_title: str = Field(alias="targetTitle")
+    created_at: datetime = Field(alias="createdAt")
+
+
+class MatchAnalysisHistoryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    data: list[MatchAnalysisHistoryItem]
+    next_cursor: UUID | None = Field(alias="nextCursor")
+
+
 class MatchAnalysisResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
