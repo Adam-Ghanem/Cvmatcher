@@ -1,0 +1,15 @@
+{
+  "name": "cvmatcher",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.21.0",
+  "scripts": {
+    "web:dev": "pnpm --dir apps/web dev",
+    "web:build": "pnpm --dir apps/web build",
+    "web:lint": "pnpm --dir apps/web lint",
+    "web:typecheck": "pnpm --dir apps/web typecheck",
+    "web:test": "pnpm --dir apps/web test",
+    "web:check": "pnpm web:lint && pnpm web:typecheck && pnpm web:test && pnpm web:build"
+  },
+  "devDependencies": {}
+}

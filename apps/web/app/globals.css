@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+:root {
+  --canvas: #f4f6f2;
+  --surface: #ffffff;
+  --surface-subtle: #edf1ea;
+  --ink: #15211e;
+  --ink-muted: #5d6b65;
+  --line: #d5ded7;
+  --brand: #0f5a47;
+  --brand-strong: #0a4235;
+  --brand-soft: #dbece5;
+  --signal: #d97706;
+  --danger: #b42318;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --shadow-panel: 0 1px 2px rgb(21 33 30 / 0.05), 0 10px 30px rgb(21 33 30 / 0.06);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-signal: var(--signal);
+  --color-danger: var(--danger);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --shadow-panel: var(--shadow-panel);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+  background: var(--canvas);
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid var(--signal);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--brand-soft);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
