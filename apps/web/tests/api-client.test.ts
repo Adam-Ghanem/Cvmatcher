@@ -19,7 +19,7 @@ describe("apiFetch", () => {
               requestId: "3f79e747-17ab-4c80-9e5a-4a9e438471f8",
             },
           }),
-          { status: 503 },
+          { headers: { "content-type": "application/json" }, status: 503 },
         ),
       ),
     );
@@ -29,5 +29,22 @@ describe("apiFetch", () => {
       requestId: "3f79e747-17ab-4c80-9e5a-4a9e438471f8",
       status: 503,
     });
+  });
+
+  it("sends browser credentials and a correlation identifier by default", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "ok" }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch<{ status: string }>("/api/v1/health");
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.credentials).toBe("include");
+    expect(init.headers).toMatchObject({ Accept: "application/json" });
+    expect(init.headers).toHaveProperty("X-Request-ID");
   });
 });

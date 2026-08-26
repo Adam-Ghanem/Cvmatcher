@@ -17,9 +17,7 @@ class AuditEvent(Base):
 
     __tablename__ = "audit_events"
 
-    id: Mapped[UUID] = mapped_column(
-        PostgreSQLUUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True, default=uuid4)
     event_type: Mapped[str] = mapped_column(String(120), index=True)
     user_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

@@ -17,8 +17,9 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ApiException
 from app.core.logging import configure_logging, request_id_context
 from app.core.rate_limit import InMemoryRateLimiter
-from app.db.session import create_database_engine
+from app.db.session import create_database_engine, create_session_factory
 from app.schemas.common import ApiErrorDetail, ApiErrorResponse
+from app.services.object_storage import LocalPrivateObjectStorage
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,15 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     settings: Settings = application.state.settings
     database_engine: AsyncEngine = create_database_engine(settings)
     application.state.database_engine = database_engine
+    application.state.session_factory = create_session_factory(database_engine)
     application.state.rate_limiter = InMemoryRateLimiter(
         max_requests=settings.rate_limit_requests_per_minute
+    )
+    application.state.auth_rate_limiter = InMemoryRateLimiter(
+        max_requests=settings.auth_rate_limit_requests_per_minute
+    )
+    application.state.object_storage = LocalPrivateObjectStorage(
+        settings.resolved_private_storage_root
     )
     try:
         yield
@@ -102,7 +110,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             if request.url.path not in {"/api/v1/health", "/api/v1/ready"}:
                 client_host = request.client.host if request.client else "unknown"
-                if not await request.app.state.rate_limiter.allow(client_host):
+                limiter = (
+                    request.app.state.auth_rate_limiter
+                    if request.url.path.startswith("/api/v1/auth/")
+                    else request.app.state.rate_limiter
+                )
+                if not await limiter.allow(client_host):
                     response = error_response(
                         request,
                         code="RATE_LIMITED",

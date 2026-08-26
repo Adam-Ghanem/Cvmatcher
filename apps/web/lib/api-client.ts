@@ -6,6 +6,41 @@ export interface ApiErrorBody {
   };
 }
 
+export interface CurrentUser {
+  id: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface AuthenticatedUserResponse {
+  user: CurrentUser;
+}
+
+export interface CsrfTokenResponse {
+  csrfToken: string;
+}
+
+export interface CvDocumentVersion {
+  id: string;
+  versionNumber: number;
+  originalFilename: string;
+  contentType: string;
+  byteSize: number;
+  uploadedAt: string;
+}
+
+export interface CvDocument {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  latestVersion: CvDocumentVersion;
+}
+
+export interface CvDocumentListResponse {
+  data: CvDocument[];
+}
+
 export class ApiRequestError extends Error {
   public readonly code: string;
   public readonly requestId: string;
@@ -36,10 +71,15 @@ function isApiErrorBody(value: unknown): value is ApiErrorBody {
   );
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export function apiUrl(path: string): string {
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+  return new URL(path, baseUrl).toString();
+}
+
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const requestId = crypto.randomUUID();
-  const response = await fetch(new URL(path, baseUrl), {
+  const response = await fetch(apiUrl(path), {
+    credentials: "include",
     ...init,
     headers: {
       Accept: "application/json",
@@ -48,7 +88,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     },
   });
 
-  const body: unknown = await response.json();
+  const hasJsonBody = response.headers.get("content-type")?.includes("application/json") ?? false;
+  const body: unknown = hasJsonBody ? await response.json() : undefined;
   if (!response.ok) {
     if (isApiErrorBody(body)) {
       throw new ApiRequestError(body.error, response.status);
@@ -64,4 +105,9 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   return body as T;
+}
+
+export async function getCsrfToken(): Promise<string> {
+  const response = await apiFetch<CsrfTokenResponse>("/api/v1/auth/csrf");
+  return response.csrfToken;
 }

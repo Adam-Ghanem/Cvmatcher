@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const foundationCards = [
   {
     title: "Your evidence",
@@ -24,9 +26,10 @@ export default function HomePage() {
             </span>
             <span>CVMatcher</span>
           </a>
-          <span className="rounded-sm bg-brand-soft px-3 py-1 text-xs font-semibold tracking-wide text-brand-strong">
-            FOUNDATION
-          </span>
+          <nav aria-label="Account navigation" className="flex items-center gap-3">
+            <Link className="text-sm font-semibold text-ink-muted hover:text-brand" href="/auth/login">Sign in</Link>
+            <Link className="rounded-sm bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-strong" href="/auth/register">Create account</Link>
+          </nav>
         </header>
 
         <section id="main-content" className="grid flex-1 gap-10 px-5 py-12 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:gap-16 lg:px-14 lg:py-16">
@@ -39,6 +42,10 @@ export default function HomePage() {
               CVMatcher is being built to turn a CV and a target role into explainable strengths, meaningful gaps, and a credible plan of action.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
+              <Link className="rounded-sm bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-strong" href="/auth/register">Create your secure workspace</Link>
+              <Link className="rounded-sm border border-line bg-white px-4 py-3 text-sm font-semibold transition hover:border-brand hover:text-brand" href="/auth/login">Sign in</Link>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
               <span className="rounded-sm border border-line px-3 py-2 text-sm font-medium">Transparent scoring</span>
               <span className="rounded-sm border border-line px-3 py-2 text-sm font-medium">Private by design</span>
               <span className="rounded-sm border border-line px-3 py-2 text-sm font-medium">Action-oriented</span>
