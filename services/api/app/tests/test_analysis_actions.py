@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import cast
 
 from fastapi.testclient import TestClient
@@ -124,6 +125,33 @@ def test_owner_generates_and_reads_deterministic_actions_from_unmatched_v3_requi
     assert listed_actions.status_code == 200
     assert listed_data == [first_actions[0]]
     assert listed_body["nextCursor"] is not None
+
+
+def test_concurrent_action_generation_reuses_one_deterministic_plan(
+    client: TestClient,
+    second_client: TestClient,
+) -> None:
+    register(client, "concurrent-actions@example.com")
+    _, _, _, analysis_id, _ = create_v3_analysis_with_requirements(client)
+    second_client.cookies.update(client.cookies)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(
+            executor.map(
+                lambda active_client: generate_actions(active_client, analysis_id),
+                (client, second_client),
+            )
+        )
+
+    response_bodies = [cast(dict[str, object], response.json()) for response in responses]
+    response_actions = [cast(list[dict[str, object]], body["data"]) for body in response_bodies]
+    listed = client.get(f"/api/v1/match-analyses/{analysis_id}/actions")
+    listed_actions = cast(list[dict[str, object]], listed.json()["data"])
+
+    assert all(response.status_code == 201 for response in responses)
+    assert response_actions[0] == response_actions[1]
+    assert len(listed_actions) == 3
+    assert len({action["requirementId"] for action in listed_actions}) == 3
 
 
 def test_owner_can_update_only_an_action_status(client: TestClient) -> None:

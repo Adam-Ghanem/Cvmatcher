@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from threading import Event
 from typing import cast
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 
+from app.services import match_analyses
+from app.services.deterministic_scoring import calculate_deterministic_score
 from app.tests.test_authentication import csrf_token, register
 from app.tests.test_extraction import upload_docx
 from app.tests.test_job_requirements import create_job_requirement
@@ -127,6 +132,81 @@ def test_owner_can_create_and_reuse_a_private_deterministic_match_analysis(
     assert "Lead the platform engineering function" not in first_response.text
     assert "jobDescription" not in first_body
     assert "cvDocumentVersionId" not in first_body
+
+
+def test_concurrent_v2_analysis_requests_reuse_one_persisted_result(
+    client: TestClient,
+    second_client: TestClient,
+) -> None:
+    register(client, "concurrent@example.com")
+    _, version_id = create_ready_cv_version(client)
+    target = create_job_target(client)
+    target_id = str(target["id"])
+    second_client.cookies.update(client.cookies)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(
+            executor.map(
+                lambda active_client: create_analysis(
+                    active_client,
+                    cv_document_version_id=version_id,
+                    job_target_id=target_id,
+                ),
+                (client, second_client),
+            )
+        )
+
+    response_bodies = [cast(dict[str, object], response.json()) for response in responses]
+    assert all(response.status_code == 201 for response in responses)
+    assert len({body["id"] for body in response_bodies}) == 1
+
+
+def test_analysis_creation_locks_the_target_against_concurrent_deletion(
+    client: TestClient,
+    second_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    register(client, "analysis-delete-race@example.com")
+    _, version_id = create_ready_cv_version(client)
+    target = create_job_target(client)
+    target_id = str(target["id"])
+    second_client.cookies.update(client.cookies)
+    calculation_started = Event()
+    allow_calculation = Event()
+    original_calculation = calculate_deterministic_score
+
+    def blocked_calculation(cv_text: str, job_description: str) -> dict[str, object]:
+        calculation_started.set()
+        assert allow_calculation.wait(timeout=10)
+        return original_calculation(cv_text, job_description)
+
+    monkeypatch.setattr(match_analyses, "calculate_deterministic_score", blocked_calculation)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        analysis_future = executor.submit(
+            create_analysis,
+            client,
+            cv_document_version_id=version_id,
+            job_target_id=target_id,
+        )
+        assert calculation_started.wait(timeout=5)
+        second_client.cookies.update(client.cookies)
+        delete_csrf_token = str(client.cookies["cvmatcher_csrf"])
+        delete_future = executor.submit(
+            second_client.delete,
+            f"/api/v1/job-targets/{target_id}",
+            headers={"X-CSRF-Token": delete_csrf_token},
+        )
+        try:
+            with pytest.raises(TimeoutError):
+                delete_future.result(timeout=1)
+        finally:
+            allow_calculation.set()
+        analysis_response = analysis_future.result(timeout=10)
+        delete_response = delete_future.result(timeout=10)
+
+    assert analysis_response.status_code == 201
+    assert delete_response.status_code == 204
 
 
 def test_match_analysis_requires_a_successful_private_extraction(client: TestClient) -> None:

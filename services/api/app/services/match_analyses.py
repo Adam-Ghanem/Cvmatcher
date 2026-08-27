@@ -55,9 +55,9 @@ class MatchAnalysisService:
         if version is None:
             raise ApiException("RESOURCE_NOT_FOUND", "We could not find that CV version.", 404)
         target = await database_session.scalar(
-            select(JobTarget).where(
-                JobTarget.id == payload.job_target_id, JobTarget.user_id == user_id
-            )
+            select(JobTarget)
+            .where(JobTarget.id == payload.job_target_id, JobTarget.user_id == user_id)
+            .with_for_update()
         )
         if target is None:
             raise ApiException("RESOURCE_NOT_FOUND", "We could not find that target role.", 404)
