@@ -2,6 +2,8 @@
 
 All implemented routes are versioned under `/api/v1`. Success and error payloads use JSON. Errors use the shared envelope below and include a correlation identifier in both the body and `X-Request-ID` response header. Unknown API paths return `404 RESOURCE_NOT_FOUND`; unsupported methods return `405 METHOD_NOT_ALLOWED` and retain the standard `Allow` response header. The API does not return framework-specific `detail` payloads.
 
+All non-health/ready requests receive policy-specific `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers; rejected or unavailable limiter decisions additionally include `Retry-After`. Explicitly allowed browser origins can read these headers and `X-Request-ID` through CORS. The response headers do not expose client identity, private document content, storage identifiers, or internal provider details.
+
 ```json
 {
   "error": {
@@ -46,10 +48,10 @@ All document routes require the validated opaque session cookie. Upload routes a
 
 | Method | Route | Purpose |
 |---|---|---|
-| `GET` | `/cv-documents` | Lists the authenticated user’s logical CV documents with their latest version. |
+| `GET` | `/cv-documents` | Lists the authenticated user’s logical CV documents with their latest version. The current typed contract returns the complete owner-scoped array; a bounded cursor transition requires a coordinated web-client release and is not silently applied server-side. |
 | `POST` | `/cv-documents` | Streams one PDF or DOCX into private storage and creates document version `1`. Multipart field: `file`. |
 | `GET` | `/cv-documents/{document_id}` | Retrieves safe metadata for one owned document. |
-| `GET` | `/cv-documents/{document_id}/versions` | Lists immutable safe metadata for all versions of one owned document. |
+| `GET` | `/cv-documents/{document_id}/versions` | Lists immutable safe metadata for all versions of one owned document. The current typed contract returns the complete owner-scoped array; a bounded cursor transition requires a coordinated web-client release and is not silently applied server-side. |
 | `POST` | `/cv-documents/{document_id}/versions` | Streams another PDF or DOCX as the next immutable version. Multipart field: `file`. |
 | `DELETE` | `/cv-documents/{document_id}` | CSRF-protected owner deletion of a CV document, all immutable versions, server-only extractions, derived analyses, and its private stored objects. |
 
@@ -95,7 +97,7 @@ Target-role routes require the validated opaque session cookie. Creation also re
 
 | Method | Route | CSRF | Purpose |
 |---|---|---:|---|
-| `GET` | `/job-targets` | No | Lists safe metadata for the signed-in user’s private target roles. |
+| `GET` | `/job-targets` | No | Lists safe metadata for the signed-in user’s private target roles. The current typed contract returns the complete owner-scoped array; a bounded cursor transition requires a coordinated web-client release and is not silently applied server-side. |
 | `POST` | `/job-targets` | Yes | Saves one private, untrusted target role and pasted job description. |
 | `DELETE` | `/job-targets/{target_id}` | Yes | Deletes one owned private target role and dependent analyses. |
 | `GET` | `/job-targets/{target_id}/requirements` | No | Lists cursor-paginated, owner-scoped structured requirements. Query parameters: `limit` (1–50, default 20) and optional `cursor`. |

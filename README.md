@@ -88,6 +88,8 @@ Privacy is a core architectural boundary, not an afterthought.
 - Analysis uses deterministic local rules
 - Production secrets are kept outside source control
 - Security and dependency checks are integrated into CI
+- Deployment configuration rejects insecure staging/production CORS and development session secrets
+- Rate-limit response headers and privacy-safe request correlation support reliable browser recovery
 
 ## 🛠️ Built With
 
@@ -123,7 +125,7 @@ pnpm web:dev
 
 ## 🏅 Engineering Quality
 
-CVMatcher is built with a security-first engineering workflow including **CI, strict type checking, automated tests, dependency auditing, and secret scanning**.
+CVMatcher is built with a security-first engineering workflow including **CI, strict type checking, database-backed automated tests, dependency auditing, secret scanning, and migration schema-drift checks**. Production still requires approved managed storage, shared rate-limit, monitoring, backup/recovery, and privacy-lifecycle operations; those deployment capabilities are not represented as already active in this repository.
 
 > CVMatcher is a career-planning and evidence-analysis tool. It does not predict hiring decisions or guarantee employment outcomes.
 

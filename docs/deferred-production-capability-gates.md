@@ -16,7 +16,7 @@ An asynchronous runner becomes appropriate only after production measurements sh
 
 ## Distributed rate limiting
 
-The current in-memory rate limiter is intentionally bounded to a single API process. It is adequate for local development and a single-instance deployment. Before running more than one API process or replica, rate limiting must move to an explicitly approved shared ingress or distributed enforcement layer. That decision must include trusted-client-IP handling, authentication versus general budgets, failure behavior, monitoring, and abuse-response ownership.
+The API now has provider-ready general, authentication, and expensive-request rate-limit policies with safe budget/retry headers and fail-closed unavailable-provider behavior. Its bundled in-memory backend remains intentionally bounded to one API process and is accepted only for development/test. Before running more than one API process or replica, an explicitly approved shared ingress or distributed enforcement provider and trusted-client-IP policy must be configured. That decision must include failure behavior, monitoring, and abuse-response ownership. No shared provider is implemented or activated in this repository.
 
 ## Billing and entitlement
 
@@ -39,7 +39,8 @@ Before production launch, a managed private object-storage adapter, encryption/k
 | Capability | Current decision | Required trigger or approval |
 |---|---|---|
 | Queue or worker | Deferred | Measured reliability/capacity need plus durable job design. |
-| Redis or shared limiter | Deferred | Horizontal deployment or an approved shared-ingress policy. |
+| Shared rate-limit provider | Required before horizontal production deployment | Approved provider, trusted-client-IP policy, failure behavior, and operations ownership. |
+| Redis | Deferred | It is not required by the provider-ready limiter boundary and must not be introduced without a separate justified workload. |
 | Billing | Deferred | Commercial packaging, provider, security, legal, and support approval. |
 | AI/model provider | Deferred | Explicit product scope and approved privacy/data-processing design. |
 | Account deletion/export/retention | Deferred | Approved lifecycle, backup/restore, legal, and operations policy. |

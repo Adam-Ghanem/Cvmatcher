@@ -39,6 +39,16 @@ A successful registration or login issues a high-entropy opaque session cookie. 
 
 The Next.js `proxy.ts` provides a browser-level route guard for `/app`, but it is intentionally not the authorization authority. Every protected FastAPI route resolves the session on the server and derives the principal from the validated session.
 
+## Operational reliability boundaries
+
+| Boundary | Implemented behavior | Explicit limit |
+|---|---|---|
+| Deployment settings | Staging and production reject development-prefixed session secrets and non-HTTPS CORS origins. Production also rejects local filesystem storage and a local rate-limit backend. | A production shared limiter factory and managed storage adapter are not supplied by this repository. |
+| Database resources | The async engine uses pre-ping plus validated pool/overflow/wait bounds and asyncpg statement/idle-transaction server timeouts. | Capacity, failover, backups, and operational tuning require managed-database decisions. |
+| Rate limiting | General, authentication, and expensive-request policies emit standard budget/retry headers and fail closed on unavailable configured backends. Allowed browser origins can read those headers. | The bundled backend is process-local; no distributed provider or trusted-proxy policy is activated. |
+| Request observability | JSON logs include correlation IDs and a bounded completion event with method, route template, status, and duration. | No raw request target, query, document content, identity/resource ID, or external telemetry provider is logged or configured. |
+| Migration integrity | CI upgrades the database and runs `alembic check` to detect ORM metadata drift without a matching migration. | It does not replace production migration reviews, backups, or restore drills. |
+
 ## Private document, target, and analysis boundary
 
 Phase 2 persists private document bytes and safe metadata. Phase 3 adds explicit private text extraction for one already-owned immutable version. Phase 4 adds explicit private target-role and pasted job-description intake. Phase 5 adds an explicit comparison of exactly one prepared owned CV version and one owned target role.
@@ -88,6 +98,6 @@ All document, extraction, target, analysis, and action queries derive ownership 
 
 ## Deployment boundary
 
-The web and API services each have a container definition. Development PostgreSQL is provided through Compose. CI provisions PostgreSQL, applies Alembic migrations, and runs database-backed integration tests. The local filesystem storage adapter is accepted only for development/test; production configuration rejects it and must receive a managed private object-storage implementation before document intake is enabled.
+The web and API services each have a container definition. Development PostgreSQL is provided through Compose. CI provisions PostgreSQL, applies Alembic migrations, checks ORM/migration drift with `alembic check`, and runs database-backed integration tests. The local filesystem storage adapter is accepted only for development/test; production configuration rejects it and must receive a managed private object-storage implementation before document intake is enabled.
 
-Production still requires HTTPS termination, a managed PostgreSQL service, production secret management, a private object-storage adapter, operational monitoring, backup/retention decisions, and user-controlled data lifecycle operations. These provider credentials and decisions are not encoded in this repository.
+Production still requires HTTPS termination, a managed PostgreSQL service, production secret management, a private object-storage adapter, a shared rate-limit provider with a trusted-proxy policy, operational monitoring, backup/retention decisions, recovery/restore controls, and user-controlled data lifecycle operations. These provider credentials and decisions are not encoded in this repository.
