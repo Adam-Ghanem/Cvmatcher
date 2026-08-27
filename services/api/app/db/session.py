@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -22,13 +23,33 @@ def build_async_database_url(settings: Settings) -> str:
     return url
 
 
+def database_connect_args(settings: Settings) -> dict[str, dict[str, str]]:
+    """Apply database-side timeouts to every pooled asyncpg connection."""
+    return {
+        "server_settings": {
+            "statement_timeout": str(settings.database_statement_timeout_ms),
+            "idle_in_transaction_session_timeout": str(
+                settings.database_idle_transaction_timeout_ms
+            ),
+        }
+    }
+
+
+def database_engine_options(settings: Settings) -> dict[str, Any]:
+    """Return bounded connection-pool and PostgreSQL timeout options for one engine."""
+    return {
+        "pool_pre_ping": True,
+        "pool_size": settings.database_pool_size,
+        "max_overflow": settings.database_max_overflow,
+        "pool_timeout": settings.database_pool_timeout_seconds,
+        "connect_args": database_connect_args(settings),
+    }
+
+
 def create_database_engine(settings: Settings) -> AsyncEngine:
     return create_async_engine(
         build_async_database_url(settings),
-        pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=5,
-        pool_timeout=10,
+        **database_engine_options(settings),
     )
 
 

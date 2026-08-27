@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     app_name: str = "CVMatcher API"
     api_v1_prefix: str = "/api/v1"
     database_url: PostgresDsn
+    database_pool_size: int = Field(default=5, ge=1, le=100)
+    database_max_overflow: int = Field(default=5, ge=0, le=100)
+    database_pool_timeout_seconds: int = Field(default=10, ge=1, le=120)
+    database_statement_timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
+    database_idle_transaction_timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
     cors_allowed_origins: list[AnyHttpUrl] = Field(
         default_factory=lambda: [AnyHttpUrl("http://localhost:3000")]
     )
