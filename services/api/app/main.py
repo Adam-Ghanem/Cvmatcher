@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from time import perf_counter
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
@@ -159,6 +160,7 @@ def create_app(
         request_id = request_id_from_header(request.headers.get("X-Request-ID"))
         request.state.request_id = request_id
         context_token = request_id_context.set(request_id)
+        request_started_at = perf_counter()
         response: Response
         try:
             rate_limit_decision: RateLimitDecision | None = None
@@ -204,6 +206,19 @@ def create_app(
                 status_code=500,
             )
         finally:
+            route = request.scope.get("route")
+            route_template = getattr(route, "path", "unmatched")
+            logger.info(
+                "request completed",
+                extra={
+                    "event": {
+                        "method": request.method,
+                        "route": route_template,
+                        "status_code": response.status_code,
+                        "duration_ms": max(0, round((perf_counter() - request_started_at) * 1000)),
+                    }
+                },
+            )
             request_id_context.reset(context_token)
 
         response.headers["X-Request-ID"] = request_id

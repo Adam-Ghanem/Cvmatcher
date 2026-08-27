@@ -69,6 +69,11 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(event, default=str)
 
 
+# These libraries can log full request targets, including query strings. Application
+# middleware emits a deliberately bounded request-completion event instead.
+REQUEST_TARGET_LOGGERS = ("httpx", "httpcore", "uvicorn.access")
+
+
 def configure_logging(level: str) -> None:
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
@@ -76,3 +81,5 @@ def configure_logging(level: str) -> None:
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
     root_logger.setLevel(level)
+    for logger_name in REQUEST_TARGET_LOGGERS:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
