@@ -1,6 +1,6 @@
 # CVMatcher API
 
-All implemented routes are versioned under `/api/v1`. Success and error payloads use JSON. Errors use the shared envelope below and include a correlation identifier in both the body and `X-Request-ID` response header.
+All implemented routes are versioned under `/api/v1`. Success and error payloads use JSON. Errors use the shared envelope below and include a correlation identifier in both the body and `X-Request-ID` response header. Unknown API paths return `404 RESOURCE_NOT_FOUND`; unsupported methods return `405 METHOD_NOT_ALLOWED` and retain the standard `Allow` response header. The API does not return framework-specific `detail` payloads.
 
 ```json
 {
@@ -53,7 +53,7 @@ All document routes require the validated opaque session cookie. Upload routes a
 | `POST` | `/cv-documents/{document_id}/versions` | Streams another PDF or DOCX as the next immutable version. Multipart field: `file`. |
 | `DELETE` | `/cv-documents/{document_id}` | CSRF-protected owner deletion of a CV document, all immutable versions, server-only extractions, derived analyses, and its private stored objects. |
 
-Uploads are limited to **10 MiB**. The API accepts only a `.pdf` with `application/pdf` and the `%PDF-` signature, or a `.docx` with the canonical Office MIME type, ZIP signature, and safe Office container markers. Document responses expose safe metadata only, never raw bytes, storage keys, or download URLs. Missing and unowned documents share `404 RESOURCE_NOT_FOUND`.
+Uploads are limited to **10 MiB**. Non-multipart API requests are capped at **256 KiB** before routing; multipart requests receive a bounded envelope derived from the configured upload limit. The API accepts only a `.pdf` with `application/pdf` and the `%PDF-` signature, or a `.docx` with the canonical Office MIME type, ZIP signature, and safe Office container markers. Document responses expose safe metadata only, never raw bytes, storage keys, or download URLs. Missing and unowned documents share `404 RESOURCE_NOT_FOUND`.
 
 ## CV extraction routes
 
