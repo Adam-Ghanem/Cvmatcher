@@ -17,6 +17,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ApiException
 from app.core.logging import configure_logging, request_id_context
 from app.core.rate_limit import InMemoryRateLimiter
+from app.core.request_limits import RequestBodyLimitMiddleware
 from app.db.session import create_database_engine, create_session_factory
 from app.schemas.common import ApiErrorDetail, ApiErrorResponse
 from app.services.object_storage import LocalPrivateObjectStorage
@@ -89,13 +90,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.settings = resolved_settings
     application.add_middleware(
-        CORSMiddleware,
-        allow_origins=resolved_settings.cors_origin_strings,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Accept", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
-        expose_headers=["X-Request-ID"],
-        max_age=600,
+        RequestBodyLimitMiddleware,
+        max_request_body_bytes=resolved_settings.max_request_body_bytes,
+        max_multipart_request_bytes=resolved_settings.max_multipart_request_bytes,
     )
 
     @application.middleware("http")
@@ -145,6 +142,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Request-ID"] = request_id
         add_security_headers(response, resolved_settings)
         return response
+
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=resolved_settings.cors_origin_strings,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Accept", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
+        expose_headers=["X-Request-ID"],
+        max_age=600,
+    )
 
     @application.exception_handler(ApiException)
     async def handle_api_exception(request: Request, exc: ApiException) -> JSONResponse:

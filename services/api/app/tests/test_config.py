@@ -32,3 +32,22 @@ def test_settings_require_an_explicit_cors_origin() -> None:
             database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
             cors_allowed_origins=[],
         )
+
+
+def test_settings_bound_non_upload_requests_and_derive_a_multipart_envelope() -> None:
+    settings = Settings(
+        database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
+        max_upload_bytes=1_024,
+        max_request_body_bytes=2_048,
+    )
+
+    assert settings.max_request_body_bytes == 2_048
+    assert settings.max_multipart_request_bytes == 3_072
+
+
+def test_settings_reject_an_unreasonably_small_non_upload_request_limit() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
+            max_request_body_bytes=1_023,
+        )

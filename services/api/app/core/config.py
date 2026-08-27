@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     session_hmac_secret: SecretStr = Field(min_length=32)
     session_ttl_hours: int = Field(default=168, ge=1, le=24 * 31)
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1_024, le=50 * 1024 * 1024)
+    max_request_body_bytes: int = Field(default=256 * 1024, ge=1_024, le=5 * 1024 * 1024)
     private_storage_root: Path = Path(".local-storage")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
@@ -58,6 +59,11 @@ class Settings(BaseSettings):
                     "not local storage."
                 )
         return self
+
+    @property
+    def max_multipart_request_bytes(self) -> int:
+        """Permit the bounded file payload plus a bounded multipart envelope."""
+        return self.max_upload_bytes + self.max_request_body_bytes
 
     @property
     def cors_origin_strings(self) -> list[str]:

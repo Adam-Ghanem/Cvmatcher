@@ -77,3 +77,19 @@ def test_unexpected_downstream_failure_returns_safe_error_envelope(
     assert response.json()["error"]["code"] == "INTERNAL_ERROR"
     assert "password" not in response.json()["error"]["message"].lower()
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_rejects_oversized_declared_non_upload_request_before_routing(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/health",
+        headers={
+            "Content-Length": str(256 * 1024 + 1),
+            "Origin": "http://localhost:3000",
+        },
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "REQUEST_TOO_LARGE"
+    assert "x-request-id" in response.headers
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
