@@ -33,3 +33,23 @@ def test_redact_removes_nested_sensitive_values() -> None:
             "safe_field": "allowed",
         }
     }
+
+
+def test_redact_removes_common_sensitive_career_and_identity_fields() -> None:
+    event = {
+        "email": "candidate@example.com",
+        "cvText": "private CV content",
+        "job_description": "private job description",
+        "private_object_key": "cv/private-key",
+        "session_token": "session-secret",
+        "nested": {"csrfToken": "csrf-secret", "safe_field": "allowed"},
+    }
+
+    assert redact(event) == {
+        "email": "[REDACTED]",
+        "cvText": "[REDACTED]",
+        "job_description": "[REDACTED]",
+        "private_object_key": "[REDACTED]",
+        "session_token": "[REDACTED]",
+        "nested": {"csrfToken": "[REDACTED]", "safe_field": "allowed"},
+    }

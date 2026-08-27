@@ -13,20 +13,37 @@ SENSITIVE_FIELD_NAMES = frozenset(
     {
         "authorization",
         "cookie",
-        "cv_content",
-        "document_content",
-        "openai_api_key",
+        "cvcontent",
+        "cvtext",
+        "documentcontent",
+        "email",
+        "extractedtext",
+        "filename",
+        "jobdescription",
+        "jobtext",
+        "objectkey",
+        "openaapikey",
+        "originalfilename",
         "password",
+        "privateobjectkey",
         "secret",
+        "sessiontoken",
+        "csrftoken",
         "token",
     }
 )
 
 
+def normalized_field_name(value: object) -> str:
+    return "".join(character for character in str(value).casefold() if character.isalnum())
+
+
 def redact(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {
-            str(key): "[REDACTED]" if str(key).lower() in SENSITIVE_FIELD_NAMES else redact(item)
+            str(key): "[REDACTED]"
+            if normalized_field_name(key) in SENSITIVE_FIELD_NAMES
+            else redact(item)
             for key, item in value.items()
         }
     if isinstance(value, list):
