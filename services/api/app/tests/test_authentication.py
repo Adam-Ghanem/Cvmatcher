@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import cast
 
 from fastapi.testclient import TestClient
+from httpx import Response
 
 
 def csrf_token(client: TestClient) -> str:
@@ -46,6 +48,31 @@ def test_register_issues_an_opaque_session_and_me_returns_the_server_principal(
     assert response.status_code == 200
     assert response.json()["user"]["email"] == "candidate@example.com"
     assert "authSubject" not in response.json()["user"]
+
+
+def test_concurrent_registration_returns_a_safe_conflict_for_one_request(
+    client: TestClient,
+    second_client: TestClient,
+) -> None:
+    def register_concurrently(active_client: TestClient) -> Response:
+        return cast(
+            Response,
+            active_client.post(
+                "/api/v1/auth/register",
+                headers={"X-CSRF-Token": csrf_token(active_client)},
+                json={"email": "race@example.com", "password": "A-str0ng-password!"},
+            ),
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(executor.map(register_concurrently, (client, second_client)))
+
+    status_codes = sorted(response.status_code for response in responses)
+    conflict_response = next(response for response in responses if response.status_code == 409)
+
+    assert status_codes == [201, 409]
+    assert conflict_response.json()["error"]["code"] == "ACCOUNT_UNAVAILABLE"
+    assert "integrity" not in conflict_response.text.casefold()
 
 
 def test_protected_identity_endpoint_rejects_anonymous_requests(client: TestClient) -> None:

@@ -10,6 +10,7 @@ from uuid import uuid4
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -90,7 +91,15 @@ async def create_user_with_password(
     user_id = uuid4()
     user = User(id=user_id, auth_subject=f"local:{user_id}", email=email)
     database_session.add(user)
-    await database_session.flush()
+    try:
+        await database_session.flush()
+    except IntegrityError as exc:
+        await database_session.rollback()
+        raise ApiException(
+            code="ACCOUNT_UNAVAILABLE",
+            message="We could not create this account. Try signing in instead.",
+            status_code=409,
+        ) from exc
     credential = PasswordCredential(user_id=user.id, password_hash=hash_password(password))
     database_session.add(credential)
     await database_session.flush()
