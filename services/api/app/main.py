@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncEngine
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 
 from app.api.router import api_router
@@ -156,6 +157,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(ApiException)
     async def handle_api_exception(request: Request, exc: ApiException) -> JSONResponse:
         return error_response(request, exc.code, exc.message, exc.status_code)
+
+    @application.exception_handler(StarletteHTTPException)
+    async def handle_framework_http_error(
+        request: Request,
+        exc: StarletteHTTPException,
+    ) -> JSONResponse:
+        code, message = {
+            404: ("RESOURCE_NOT_FOUND", "We could not find that resource."),
+            405: ("METHOD_NOT_ALLOWED", "This request method is not supported for that resource."),
+        }.get(
+            exc.status_code,
+            ("REQUEST_ERROR", "We could not process this request."),
+        )
+        response = error_response(request, code, message, exc.status_code)
+        if exc.headers:
+            response.headers.update(exc.headers)
+        return response
 
     @application.exception_handler(RequestValidationError)
     async def handle_validation_error(

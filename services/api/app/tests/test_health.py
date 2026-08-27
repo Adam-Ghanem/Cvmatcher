@@ -93,3 +93,24 @@ def test_rejects_oversized_declared_non_upload_request_before_routing(client: Te
     assert "x-request-id" in response.headers
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_unknown_api_route_uses_the_safe_error_envelope(client: TestClient) -> None:
+    response = client.get("/api/v1/not-a-route")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "RESOURCE_NOT_FOUND"
+    assert "detail" not in response.json()
+    assert "x-request-id" in response.headers
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_unsupported_api_method_uses_the_safe_error_envelope(client: TestClient) -> None:
+    response = client.put("/api/v1/health")
+
+    assert response.status_code == 405
+    assert response.json()["error"]["code"] == "METHOD_NOT_ALLOWED"
+    assert "detail" not in response.json()
+    assert "GET" in response.headers["allow"]
+    assert "x-request-id" in response.headers
+    assert response.headers["x-content-type-options"] == "nosniff"
