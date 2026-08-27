@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ApiException
 from app.models.job_target import JobTarget
 from app.schemas.job_targets import CreateJobTargetRequest, JobTargetSummary
+from app.services.audit_events import record_audit_event
 
 
 class JobTargetService:
@@ -29,6 +30,12 @@ class JobTargetService:
         database_session.add(target)
         await database_session.flush()
         await database_session.refresh(target)
+        record_audit_event(
+            database_session,
+            event_type="target.created",
+            user_id=user_id,
+            metadata={},
+        )
         return job_target_summary(target)
 
     async def list_targets(
@@ -59,6 +66,12 @@ class JobTargetService:
         if target is None:
             raise ApiException("RESOURCE_NOT_FOUND", "We could not find that target role.", 404)
         await database_session.delete(target)
+        record_audit_event(
+            database_session,
+            event_type="target.deleted",
+            user_id=user_id,
+            metadata={},
+        )
         await database_session.flush()
 
     async def get_target(

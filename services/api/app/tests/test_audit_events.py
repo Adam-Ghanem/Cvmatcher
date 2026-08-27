@@ -16,6 +16,7 @@ from app.tests.test_analysis_actions import (
     generate_actions,
 )
 from app.tests.test_authentication import csrf_token, register
+from app.tests.test_match_analyses import create_analysis
 
 
 class RecordingSession:
@@ -102,6 +103,63 @@ def test_core_lifecycle_records_fixed_non_content_audit_events(client: TestClien
     assert "private_object_key" not in serialized_events
     assert "requirement_text" not in serialized_events
     assert "example-password" not in serialized_events
+
+
+def test_lifecycle_audit_events_cover_document_target_and_analysis_reuse(
+    client: TestClient,
+) -> None:
+    register(client, "audit-lifecycle@example.com")
+    document_id, version_id, target_id, _, _ = create_v3_analysis_with_requirements(client)
+    reused_analysis = create_analysis(
+        client,
+        cv_document_version_id=version_id,
+        job_target_id=target_id,
+        scoring_version="deterministic-v3",
+    )
+    deleted_target = client.delete(
+        f"/api/v1/job-targets/{target_id}",
+        headers={"X-CSRF-Token": csrf_token(client)},
+    )
+    deleted_document = client.delete(
+        f"/api/v1/cv-documents/{document_id}",
+        headers={"X-CSRF-Token": csrf_token(client)},
+    )
+    events = persisted_audit_events()
+    event_types = {event["event_type"] for event in events}
+    serialized_events = json.dumps(events, default=str, sort_keys=True)
+
+    assert reused_analysis.status_code == 201
+    assert deleted_target.status_code == 204
+    assert deleted_document.status_code == 204
+    assert {
+        "cv.uploaded",
+        "cv.deleted",
+        "target.created",
+        "target.deleted",
+        "analysis.reused",
+    }.issubset(event_types)
+    assert "Private platform target" not in serialized_events
+    assert "CV_PRIVATE_EVIDENCE_MARKER" not in serialized_events
+
+
+def test_failed_login_records_a_non_identifying_audit_event(client: TestClient) -> None:
+    attempted_email = "not-an-account@example.com"
+    response = client.post(
+        "/api/v1/auth/login",
+        headers={"X-CSRF-Token": csrf_token(client)},
+        json={"email": attempted_email, "password": "A-str0ng-password!"},
+    )
+    events = persisted_audit_events()
+    failed_events = [event for event in events if event["event_type"] == "auth.login_failed"]
+    serialized_events = json.dumps(events, default=str, sort_keys=True)
+
+    assert response.status_code == 401
+    assert len(failed_events) == 1
+    assert failed_events[0]["user_id"] is None
+    assert failed_events[0]["metadata_json"] == {"reason": "invalid_credentials"}
+    assert failed_events[0]["request_id"] is not None
+    assert attempted_email not in serialized_events
+    assert "A-str0ng-password!" not in serialized_events
 
 
 def test_audit_events_store_only_allowlisted_scalar_metadata(client: TestClient) -> None:

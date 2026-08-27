@@ -91,6 +91,12 @@ class MatchAnalysisService:
                 )
             )
             if existing is not None:
+                record_audit_event(
+                    database_session,
+                    event_type="analysis.reused",
+                    user_id=user_id,
+                    metadata={"scoring_version": SCORING_VERSION_V2},
+                )
                 return analysis_response(existing)
             input_fingerprint = legacy_v2_input_fingerprint(version.id, target.id)
             result = calculate_deterministic_score(
@@ -122,6 +128,12 @@ class MatchAnalysisService:
                 )
             )
             if existing is not None:
+                record_audit_event(
+                    database_session,
+                    event_type="analysis.reused",
+                    user_id=user_id,
+                    metadata={"scoring_version": SCORING_VERSION_V3},
+                )
                 return analysis_response(existing)
             result = calculate_deterministic_v3(
                 normalized_cv_terms(extraction.extracted_text),

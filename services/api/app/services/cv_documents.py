@@ -12,6 +12,7 @@ from app.schemas.cv_documents import (
     CvDocumentSummary,
     CvDocumentVersionSummary,
 )
+from app.services.audit_events import record_audit_event
 from app.services.object_storage import PrivateObjectKey, PrivateObjectStorage, StagedDocument
 
 
@@ -68,6 +69,12 @@ class CvDocumentService:
             private_object_key=object_key.value,
         )
         database_session.add(version)
+        record_audit_event(
+            database_session,
+            event_type="cv.uploaded",
+            user_id=user_id,
+            metadata={},
+        )
         try:
             await database_session.commit()
             await database_session.refresh(document)
@@ -111,6 +118,12 @@ class CvDocumentService:
             private_object_key=object_key.value,
         )
         database_session.add(version)
+        record_audit_event(
+            database_session,
+            event_type="cv.uploaded",
+            user_id=user_id,
+            metadata={},
+        )
         try:
             await database_session.commit()
             await database_session.refresh(version)
@@ -142,6 +155,12 @@ class CvDocumentService:
         for object_key in versions:
             await self._storage.delete(object_key=PrivateObjectKey(value=object_key))
         await database_session.delete(document)
+        record_audit_event(
+            database_session,
+            event_type="cv.deleted",
+            user_id=user_id,
+            metadata={},
+        )
         await database_session.flush()
 
     async def get_document(

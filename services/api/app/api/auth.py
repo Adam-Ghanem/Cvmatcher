@@ -6,7 +6,9 @@ from fastapi import APIRouter, Header, Request, Response, status
 
 from app.api.dependencies import AuthenticatedSessionDependency, DatabaseSession
 from app.core.config import Settings
+from app.core.errors import ApiException
 from app.schemas.auth import AuthenticatedUserResponse, CredentialsRequest, CsrfTokenResponse
+from app.services.audit_events import record_audit_event, record_committed_audit_event
 from app.services.authentication import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
@@ -137,17 +139,33 @@ async def login(
     validate_unauthenticated_csrf(request, submitted_csrf_token, settings)
     from app.services.authentication import authenticate_password
 
-    user = await authenticate_password(
-        database_session,
-        email=credentials.email,
-        password=credentials.password,
-    )
+    try:
+        user = await authenticate_password(
+            database_session,
+            email=credentials.email,
+            password=credentials.password,
+        )
+    except ApiException as exc:
+        if exc.code == "INVALID_CREDENTIALS":
+            await record_committed_audit_event(
+                request.app.state.session_factory,
+                event_type="auth.login_failed",
+                user_id=None,
+                metadata={"reason": "invalid_credentials"},
+            )
+        raise
     issued_session = await issue_session(
         database_session,
         user=user,
         settings=settings,
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None,
+    )
+    record_audit_event(
+        database_session,
+        event_type="auth.login_succeeded",
+        user_id=user.id,
+        metadata={},
     )
     set_session_cookies(
         response,
