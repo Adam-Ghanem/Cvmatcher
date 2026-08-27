@@ -20,6 +20,7 @@ from app.schemas.match_analyses import (
     MatchAnalysisHistoryResponse,
     MatchAnalysisResponse,
 )
+from app.services.audit_events import record_audit_event
 from app.services.cv_extraction import derive_readiness
 from app.services.deterministic_scoring import (
     SCORING_VERSION as SCORING_VERSION_V2,
@@ -153,6 +154,12 @@ class MatchAnalysisService:
             result_payload=result,
         )
         database_session.add(analysis)
+        record_audit_event(
+            database_session,
+            event_type="analysis.created",
+            user_id=user_id,
+            metadata={"scoring_version": scoring_version},
+        )
         await database_session.flush()
         await database_session.refresh(analysis)
         return analysis_response(analysis)

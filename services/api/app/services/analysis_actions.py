@@ -15,6 +15,7 @@ from app.schemas.analysis_actions import (
     UpdateAnalysisActionRequest,
 )
 from app.schemas.match_analyses import RequirementMatchResponse
+from app.services.audit_events import record_audit_event
 from app.services.deterministic_scoring_v3 import SCORING_VERSION_V3
 
 CATEGORY_PRIORITY_BASE = {
@@ -53,6 +54,7 @@ class AnalysisActionService:
             for action in existing_actions
             if action.requirement_id is not None
         }
+        created_count = 0
         for position, candidate in enumerate(candidates, start=1):
             if candidate.requirement_id in existing_requirement_ids:
                 continue
@@ -70,6 +72,13 @@ class AnalysisActionService:
                     position=position,
                 )
             )
+            created_count += 1
+        record_audit_event(
+            database_session,
+            event_type="action_plan.generated",
+            user_id=user_id,
+            metadata={"created_count": created_count},
+        )
         await database_session.flush()
         return await self.list_for_analysis(
             database_session,
@@ -151,6 +160,12 @@ class AnalysisActionService:
         if action is None:
             raise self._not_found_error()
         action.status = payload.status
+        record_audit_event(
+            database_session,
+            event_type="action.status_updated",
+            user_id=user_id,
+            metadata={"status": payload.status},
+        )
         await database_session.flush()
         await database_session.refresh(action)
         return action_response(action)

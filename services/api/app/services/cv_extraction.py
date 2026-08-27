@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ApiException
 from app.models.cv_document import CvDocument, CvDocumentVersion
 from app.models.cv_extraction import CvExtraction
+from app.services.audit_events import record_audit_event
 from app.services.object_storage import (
     DOCX_MIME_TYPE,
     PDF_MIME_TYPE,
@@ -233,6 +234,12 @@ async def extract_owned_version(
         )
     except (ApiException, ExtractionWorkerError, OSError):
         mark_extraction_failed(extraction)
+        record_audit_event(
+            database_session,
+            event_type="cv.extraction_failed",
+            user_id=user_id,
+            metadata={"source_type": source_type},
+        )
     else:
         assessment = assess_extracted_text(text)
         extraction.status = "succeeded"
@@ -244,6 +251,15 @@ async def extract_owned_version(
         extraction.character_count = assessment.character_count
         extraction.failure_message = None
         extraction.completed_at = datetime.now(UTC)
+        record_audit_event(
+            database_session,
+            event_type="cv.extraction_succeeded",
+            user_id=user_id,
+            metadata={
+                "source_type": extracted_source_type,
+                "quality": assessment.quality,
+            },
+        )
 
     await database_session.flush()
     await database_session.refresh(extraction)

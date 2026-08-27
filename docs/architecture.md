@@ -54,7 +54,8 @@ Phase 2 persists private document bytes and safe metadata. Phase 3 adds explicit
 | Match-analysis service | Owner-scopes both selected resources, requires an analysis-eligible extraction, preserves v2 reuse, and derives v3 results only from server-owned reviewed requirements plus normalized CV evidence. V3 reuse is keyed by a server-computed input fingerprint. |
 | Deterministic scorer | Treats CV/job text as untrusted data. It uses no network call, model, embedding, prompt, or semantic inference; only exact normalized text, fixed source-controlled vocabularies, and fixed component weights are used. |
 | Action-plan service | Reads one owned persisted v3 analysis, derives unmatched-requirement actions with fixed category/priority rules, and permits only bounded owner-managed status changes. |
-| PostgreSQL | Stores user-owned documents, immutable versions, extractions, target roles, structured requirements, derived analyses, and action snapshots. Raw source text never leaves server-controlled data paths. |
+| Audit-event service | Records fixed allowlisted authentication, extraction, analysis, and action lifecycle categories with scalar metadata and request correlation only. It has no public read API and never records document content. |
+| PostgreSQL | Stores user-owned documents, immutable versions, extractions, target roles, structured requirements, derived analyses, action snapshots, and private audit metadata. Raw source text never leaves server-controlled data paths. |
 
 ## Deterministic analysis flow
 
@@ -81,7 +82,7 @@ Phase 2 persists private document bytes and safe metadata. Phase 3 adds explicit
 | `job_requirements` | User-owned manual structured requirements with category, normalized skill, priority, review state, normalization version, and safe source reference. |
 | `match_analyses` | Owner-owned derived score/result for one CV version, target role, scoring version, and input fingerprint. The fingerprint makes v3 requirement mutations explicitly versioned without changing historical results. |
 | `analysis_actions` | Owner-owned action snapshots derived from unmatched v3 requirement evidence. They cascade from analyses and retain an optional current requirement reference. |
-| `audit_events` | Existing non-content security-event metadata foundation. |
+| `audit_events` | Private allowlisted authentication, extraction, analysis, and action lifecycle metadata with optional owner and request-correlation references. |
 
 All document, extraction, target, analysis, and action queries derive ownership from the authenticated user. Public analysis/action responses omit raw CV text, raw job-description text, raw requirement text, storage keys, and internal parser/scorer implementation state. The CV-version row lock and tuple constraint preserve idempotent result creation for a selected immutable version and scoring version; the analysis-action lock and unique analysis/requirement pair preserve action-generation idempotency.
 

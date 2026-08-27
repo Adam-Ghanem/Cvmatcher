@@ -18,6 +18,7 @@ from app.models.password_credential import PasswordCredential
 from app.models.user import User
 from app.models.user_session import UserSession
 from app.schemas.auth import PublicUser
+from app.services.audit_events import record_audit_event
 from app.services.authorization import CurrentPrincipal
 
 PASSWORD_HASHER = PasswordHasher()
@@ -94,6 +95,12 @@ async def create_user_with_password(
     database_session.add(credential)
     await database_session.flush()
     await database_session.refresh(user)
+    record_audit_event(
+        database_session,
+        event_type="auth.account_created",
+        user_id=user.id,
+        metadata={"authentication_method": "password"},
+    )
     return user
 
 
@@ -148,6 +155,12 @@ async def issue_session(
         )
     )
     await database_session.flush()
+    record_audit_event(
+        database_session,
+        event_type="auth.session_issued",
+        user_id=user.id,
+        metadata={"authentication_method": "password"},
+    )
     return IssuedSession(
         session_token=raw_session_token,
         csrf_token=raw_csrf_token,
@@ -225,4 +238,10 @@ def require_csrf_token(
 
 async def revoke_session(database_session: AsyncSession, session: UserSession) -> None:
     session.revoked_at = now_utc()
+    record_audit_event(
+        database_session,
+        event_type="auth.session_revoked",
+        user_id=session.user_id,
+        metadata={},
+    )
     await database_session.flush()
