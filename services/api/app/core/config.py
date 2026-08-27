@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1_024, le=50 * 1024 * 1024)
     max_request_body_bytes: int = Field(default=256 * 1024, ge=1_024, le=5 * 1024 * 1024)
     private_storage_root: Path = Path(".local-storage")
+    private_storage_backend: Literal["local", "managed"] = "local"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("cors_allowed_origins")
@@ -67,10 +68,10 @@ class Settings(BaseSettings):
         if self.app_env == "production":
             if not self.secure_cookies:
                 raise ValueError("Secure cookies are required in production.")
-            if self.resolved_private_storage_root == (REPOSITORY_ROOT / ".local-storage").resolve():
+            if self.private_storage_backend == "local":
                 raise ValueError(
-                    "Production requires a configured private object-storage adapter, "
-                    "not local storage."
+                    "Production requires a configured private object-storage backend, "
+                    "not the local adapter."
                 )
             if self.rate_limit_backend == "local":
                 raise ValueError(

@@ -28,10 +28,11 @@ from app.core.rate_limit import (
 from app.core.request_limits import RequestBodyLimitMiddleware
 from app.db.session import create_database_engine, create_session_factory
 from app.schemas.common import ApiErrorDetail, ApiErrorResponse
-from app.services.object_storage import LocalPrivateObjectStorage
+from app.services.object_storage import LocalPrivateObjectStorage, PrivateObjectStorage
 
 logger = logging.getLogger(__name__)
 RateLimitBackendFactory = Callable[[Settings], RateLimitBackend]
+PrivateObjectStorageFactory = Callable[[Settings], PrivateObjectStorage]
 
 
 def default_rate_limit_backend_factory(settings: Settings) -> RateLimitBackend:
@@ -39,6 +40,14 @@ def default_rate_limit_backend_factory(settings: Settings) -> RateLimitBackend:
         return InMemoryRateLimitBackend()
     raise RuntimeError(
         "A shared rate-limit backend factory must be configured for this deployment."
+    )
+
+
+def default_private_object_storage_factory(settings: Settings) -> PrivateObjectStorage:
+    if settings.private_storage_backend == "local":
+        return LocalPrivateObjectStorage(settings.resolved_private_storage_root)
+    raise RuntimeError(
+        "A private object-storage backend factory must be configured for this deployment."
     )
 
 
@@ -117,9 +126,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         rate_limit_backend_factory(settings),
         fail_closed_on_backend_error=settings.rate_limit_fail_closed_on_backend_error,
     )
-    application.state.object_storage = LocalPrivateObjectStorage(
-        settings.resolved_private_storage_root
-    )
+    object_storage_factory: PrivateObjectStorageFactory = application.state.object_storage_factory
+    application.state.object_storage = object_storage_factory(settings)
     try:
         yield
     finally:
@@ -130,6 +138,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     rate_limit_backend_factory: RateLimitBackendFactory | None = None,
+    object_storage_factory: PrivateObjectStorageFactory | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
     configure_logging(resolved_settings.log_level)
@@ -145,6 +154,9 @@ def create_app(
     application.state.settings = resolved_settings
     application.state.rate_limit_backend_factory = (
         rate_limit_backend_factory or default_rate_limit_backend_factory
+    )
+    application.state.object_storage_factory = (
+        object_storage_factory or default_private_object_storage_factory
     )
     application.add_middleware(
         RequestBodyLimitMiddleware,

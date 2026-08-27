@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
@@ -91,6 +93,7 @@ def test_production_settings_reject_the_local_rate_limit_backend(settings: Setti
             cors_allowed_origins=["https://app.cvmatcher.example"],
             session_hmac_secret="not-a-development-secret-that-is-at-least-thirty-two-bytes",
             private_storage_root="configured-private-adapter-root",
+            private_storage_backend="managed",
             rate_limit_backend="local",
         )
     except ValueError as exc:
@@ -168,3 +171,31 @@ def test_cors_exposes_rate_limit_headers_to_an_allowed_browser(client: TestClien
         "ratelimit-reset",
         "retry-after",
     }.issubset(exposed_headers)
+
+
+def test_selected_managed_storage_backend_requires_an_injected_factory(
+    settings: Settings,
+) -> None:
+    import pytest
+
+    application = create_app(settings.model_copy(update={"private_storage_backend": "managed"}))
+
+    with pytest.raises(
+        RuntimeError, match="private object-storage backend factory"
+    ), TestClient(application):
+        pass
+
+
+def test_selected_managed_storage_backend_uses_an_injected_factory(
+    settings: Settings, tmp_path: Path
+) -> None:
+    from app.services.object_storage import LocalPrivateObjectStorage
+
+    expected_storage = LocalPrivateObjectStorage(tmp_path / "managed-storage-test")
+    application = create_app(
+        settings.model_copy(update={"private_storage_backend": "managed"}),
+        object_storage_factory=lambda _: expected_storage,
+    )
+
+    with TestClient(application):
+        assert application.state.object_storage is expected_storage

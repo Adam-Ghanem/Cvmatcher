@@ -16,7 +16,7 @@ def test_settings_normalize_explicit_cors_origins() -> None:
 
 
 def test_production_settings_reject_local_private_storage() -> None:
-    with pytest.raises(ValidationError, match="private object-storage adapter"):
+    with pytest.raises(ValidationError, match="private object-storage backend"):
         Settings(
             app_env="production",
             database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
@@ -73,4 +73,17 @@ def test_staging_settings_reject_a_development_session_secret() -> None:
             database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
             cors_allowed_origins=["https://staging.cvmatcher.example"],
             session_hmac_secret="development-only-change-me-before-production-32-bytes",
+        )
+
+
+def test_production_settings_reject_the_local_storage_adapter_at_any_path() -> None:
+    with pytest.raises(ValidationError, match="private object-storage backend"):
+        Settings(
+            app_env="production",
+            database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
+            cors_allowed_origins=["https://app.cvmatcher.example"],
+            session_hmac_secret="production-session-secret-that-is-at-least-thirty-two-bytes",
+            private_storage_root="/configured-private-storage",
+            private_storage_backend="local",
+            rate_limit_backend="shared",
         )
