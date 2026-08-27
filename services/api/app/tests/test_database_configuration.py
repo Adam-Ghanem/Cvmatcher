@@ -12,11 +12,12 @@ from app.db.session import (
     database_connect_args,
     database_engine_options,
 )
+from app.tests.conftest import TEST_DATABASE_URL
 
 
 def configured_settings(**overrides: Any) -> Settings:
     return Settings(
-        database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
+        database_url=overrides.pop("database_url", TEST_DATABASE_URL),
         **overrides,
     )
 
