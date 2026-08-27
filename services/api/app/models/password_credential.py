@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,12 +14,12 @@ class PasswordCredential(Base):
     """Local password credential. The only persisted password representation is an Argon2 hash."""
 
     __tablename__ = "password_credentials"
+    __table_args__ = (UniqueConstraint("user_id"),)
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        unique=True,
         index=True,
     )
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)

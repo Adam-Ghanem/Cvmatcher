@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,6 +14,7 @@ class UserSession(Base):
     """Revocable opaque browser session. Raw bearer material is never persisted."""
 
     __tablename__ = "user_sessions"
+    __table_args__ = (UniqueConstraint("token_digest"),)
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
@@ -21,7 +22,7 @@ class UserSession(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         index=True,
     )
-    token_digest: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    token_digest: Mapped[str] = mapped_column(String(64), index=True)
     csrf_token_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
