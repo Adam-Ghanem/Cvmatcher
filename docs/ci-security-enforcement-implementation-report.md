@@ -18,7 +18,7 @@ The pre-change workflow already used least-privilege `contents: read` permission
 | Area | Implemented control | Deliberate boundary |
 |---|---|---|
 | Workflow permissions | The existing workflow-level `contents: read` permission is retained for all jobs, including the new `security` job. | The job receives no write permission and no credential input. |
-| JavaScript dependencies | The new job uses Node 22, pnpm 11.21.0, `pnpm install --frozen-lockfile`, then the established blocking command `pnpm audit --audit-level high`. | It does not alter the manifest, lockfile, audit threshold, or package policy. |
+| JavaScript dependencies | The job uses Node 22, pnpm 11.21.0, `pnpm install --frozen-lockfile`, then the established blocking command `pnpm audit --audit-level high`. | The manifest, lockfile, and audit threshold remain unchanged. `pnpm-workspace.yaml` approves only the reviewed existing `unrs-resolver` postinstall required by the locked resolver package; no broad build-script approval is enabled. |
 | Python dependencies | The job uses Python 3.12, installs `services/api[dev]`, then runs `python -m pip check`. | It deliberately reuses the existing compatibility validation mechanism rather than adding another vulnerability-scanning dependency. |
 | Secret enforcement | `scripts/scan_secrets.py` enumerates only `git ls-files -z` paths and scans selected, textual tracked source/configuration/documentation files. It rejects ignored local environment files, `.git` paths, generated directories, non-files, and files over 2 MiB. | It is a deterministic candidate detector, not a replacement for a managed secret-scanning program, server-side secret management, or production incident response. |
 | Detection rules | The scanner recognizes private-key markers and common OpenAI, GitHub, AWS access-key, AWS secret-access-key, Google API-key, and Slack-token formats. | It prints only `path: rule-name` and never emits a matched candidate value. Pattern-based scanning cannot identify every credential format. |
@@ -46,7 +46,7 @@ All checks below were executed locally after implementation. The warning in the 
 | Web quality gate: lint, typecheck, unit tests, production build | Passed: 12 tests passed across 3 test files; Next.js production build succeeded. |
 | `alembic current` | `20260827_0010 (head)`. |
 
-**CI workflow syntax/configuration was validated locally; remote GitHub Actions execution remains unverified.** No workflow was dispatched and no changes were pushed during this phase.
+The initial CI configuration was validated locally. A later remote run identified pnpm 11's ignored-build policy for the existing locked `unrs-resolver` postinstall; its source was reviewed and only that one package was added to the workspace `onlyBuiltDependencies` policy. The remediation is validated locally with a frozen install and requires remote workflow confirmation after publication.
 
 ## Retained launch prerequisites
 
@@ -60,4 +60,5 @@ The new job improves repository-time protection but does not replace the documen
 | `scripts/scan_secrets.py` | Adds the standard-library tracked-source scanner with redacted findings. |
 | `scripts/test_scan_secrets.py` | Adds focused scanner regression tests. |
 | `docs/security.md` | Records the enforced CI dependency/secret controls and their scope. |
-| `docs/ci-security-enforcement-implementation-report.md` | Records this implementation, validation, and limitations. |
+| `docs/ci-security-enforcement-implementation-report.md` | Records this implementation, validation, limitations, and the narrow pnpm build-policy remediation. |
+| `pnpm-workspace.yaml` | Approves only the reviewed existing `unrs-resolver` postinstall required for a reproducible frozen install. |
