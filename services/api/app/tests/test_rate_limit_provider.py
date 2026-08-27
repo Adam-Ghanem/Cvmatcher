@@ -148,3 +148,23 @@ async def test_rate_limit_protocol_is_provider_injectable() -> None:
     service = RateLimitService(factory(), fail_closed_on_backend_error=True)
 
     assert (await service.check(policy=RateLimitPolicy("test", 1, 60), key="client")).allowed
+
+
+def test_cors_exposes_rate_limit_headers_to_an_allowed_browser(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 401
+    exposed_headers = {
+        header.strip().casefold()
+        for header in response.headers["access-control-expose-headers"].split(",")
+    }
+    assert {
+        "x-request-id",
+        "ratelimit-limit",
+        "ratelimit-remaining",
+        "ratelimit-reset",
+        "retry-after",
+    }.issubset(exposed_headers)

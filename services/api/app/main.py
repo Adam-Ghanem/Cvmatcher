@@ -233,7 +233,13 @@ def create_app(
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Accept", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
-        expose_headers=["X-Request-ID"],
+        expose_headers=[
+            "X-Request-ID",
+            "RateLimit-Limit",
+            "RateLimit-Remaining",
+            "RateLimit-Reset",
+            "Retry-After",
+        ],
         max_age=600,
     )
 
