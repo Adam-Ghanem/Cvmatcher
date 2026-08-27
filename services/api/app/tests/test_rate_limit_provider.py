@@ -88,7 +88,7 @@ def test_production_settings_reject_the_local_rate_limit_backend(settings: Setti
         Settings(
             app_env="production",
             database_url=settings.database_url,
-            cors_allowed_origins=settings.cors_allowed_origins,
+            cors_allowed_origins=["https://app.cvmatcher.example"],
             session_hmac_secret="not-a-development-secret-that-is-at-least-thirty-two-bytes",
             private_storage_root="configured-private-adapter-root",
             rate_limit_backend="local",

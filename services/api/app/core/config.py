@@ -57,9 +57,14 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_requirements(self) -> Settings:
         secret = self.session_hmac_secret.get_secret_value()
-        if self.app_env == "production":
+        if self.app_env in {"staging", "production"}:
             if secret.startswith("development-only-"):
-                raise ValueError("A non-development session secret is required in production.")
+                raise ValueError(
+                    "A non-development session secret is required outside development and test."
+                )
+            if any(origin.scheme != "https" for origin in self.cors_allowed_origins):
+                raise ValueError("HTTPS CORS origins are required outside development and test.")
+        if self.app_env == "production":
             if not self.secure_cookies:
                 raise ValueError("Secure cookies are required in production.")
             if self.resolved_private_storage_root == (REPOSITORY_ROOT / ".local-storage").resolve():

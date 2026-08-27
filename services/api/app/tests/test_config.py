@@ -51,3 +51,26 @@ def test_settings_reject_an_unreasonably_small_non_upload_request_limit() -> Non
             database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
             max_request_body_bytes=1_023,
         )
+
+
+@pytest.mark.parametrize("app_env", ["staging", "production"])
+def test_deployment_settings_require_https_cors_origins(app_env: str) -> None:
+    with pytest.raises(ValidationError, match="HTTPS CORS origins"):
+        Settings(
+            app_env=app_env,
+            database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
+            cors_allowed_origins=["http://app.cvmatcher.example"],
+            session_hmac_secret="production-session-secret-that-is-at-least-thirty-two-bytes",
+            private_storage_root="/configured-private-storage",
+            rate_limit_backend="shared",
+        )
+
+
+def test_staging_settings_reject_a_development_session_secret() -> None:
+    with pytest.raises(ValidationError, match="non-development session secret"):
+        Settings(
+            app_env="staging",
+            database_url="postgresql://cvmatcher:cvmatcher@localhost:5432/cvmatcher",
+            cors_allowed_origins=["https://staging.cvmatcher.example"],
+            session_hmac_secret="development-only-change-me-before-production-32-bytes",
+        )
