@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     )
     rate_limit_requests_per_minute: int = Field(default=120, ge=1, le=10_000)
     auth_rate_limit_requests_per_minute: int = Field(default=20, ge=1, le=1_000)
+    expensive_rate_limit_requests_per_minute: int = Field(default=20, ge=1, le=1_000)
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3_600)
+    rate_limit_backend: Literal["local", "shared"] = "local"
+    rate_limit_fail_closed_on_backend_error: bool = True
     session_hmac_secret: SecretStr = Field(min_length=32)
     session_ttl_hours: int = Field(default=168, ge=1, le=24 * 31)
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1_024, le=50 * 1024 * 1024)
@@ -57,6 +61,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production requires a configured private object-storage adapter, "
                     "not local storage."
+                )
+            if self.rate_limit_backend == "local":
+                raise ValueError(
+                    "Production requires a configured shared rate-limit backend, not local memory."
                 )
         return self
 

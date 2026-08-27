@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from uuid import UUID, uuid4
 
@@ -17,13 +17,60 @@ from app.api.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiException
 from app.core.logging import configure_logging, request_id_context
-from app.core.rate_limit import InMemoryRateLimiter
+from app.core.rate_limit import (
+    InMemoryRateLimitBackend,
+    RateLimitBackend,
+    RateLimitDecision,
+    RateLimitPolicy,
+    RateLimitService,
+)
 from app.core.request_limits import RequestBodyLimitMiddleware
 from app.db.session import create_database_engine, create_session_factory
 from app.schemas.common import ApiErrorDetail, ApiErrorResponse
 from app.services.object_storage import LocalPrivateObjectStorage
 
 logger = logging.getLogger(__name__)
+RateLimitBackendFactory = Callable[[Settings], RateLimitBackend]
+
+
+def default_rate_limit_backend_factory(settings: Settings) -> RateLimitBackend:
+    if settings.rate_limit_backend == "local":
+        return InMemoryRateLimitBackend()
+    raise RuntimeError(
+        "A shared rate-limit backend factory must be configured for this deployment."
+    )
+
+
+def rate_limit_policy_for_request(request: Request, settings: Settings) -> RateLimitPolicy:
+    if request.url.path.startswith(f"{settings.api_v1_prefix}/auth/"):
+        return RateLimitPolicy(
+            name="auth",
+            limit=settings.auth_rate_limit_requests_per_minute,
+            window_seconds=settings.rate_limit_window_seconds,
+        )
+    if request.method == "POST" and (
+        request.url.path == f"{settings.api_v1_prefix}/match-analyses"
+        or request.url.path.endswith("/extraction")
+        or request.url.path.endswith("/actions")
+    ):
+        return RateLimitPolicy(
+            name="expensive",
+            limit=settings.expensive_rate_limit_requests_per_minute,
+            window_seconds=settings.rate_limit_window_seconds,
+        )
+    return RateLimitPolicy(
+        name="general",
+        limit=settings.rate_limit_requests_per_minute,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+
+
+def add_rate_limit_headers(response: Response, decision: RateLimitDecision) -> None:
+    response.headers["RateLimit-Limit"] = str(decision.limit)
+    response.headers["RateLimit-Remaining"] = str(decision.remaining)
+    response.headers["RateLimit-Reset"] = str(decision.reset_after_seconds)
+    if decision.retry_after_seconds is not None:
+        response.headers["Retry-After"] = str(decision.retry_after_seconds)
 
 
 def request_id_from_header(value: str | None) -> str:
@@ -62,11 +109,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     database_engine: AsyncEngine = create_database_engine(settings)
     application.state.database_engine = database_engine
     application.state.session_factory = create_session_factory(database_engine)
-    application.state.rate_limiter = InMemoryRateLimiter(
-        max_requests=settings.rate_limit_requests_per_minute
+    rate_limit_backend_factory: RateLimitBackendFactory = (
+        application.state.rate_limit_backend_factory
     )
-    application.state.auth_rate_limiter = InMemoryRateLimiter(
-        max_requests=settings.auth_rate_limit_requests_per_minute
+    application.state.rate_limit_service = RateLimitService(
+        rate_limit_backend_factory(settings),
+        fail_closed_on_backend_error=settings.rate_limit_fail_closed_on_backend_error,
     )
     application.state.object_storage = LocalPrivateObjectStorage(
         settings.resolved_private_storage_root
@@ -77,7 +125,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         await database_engine.dispose()
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    rate_limit_backend_factory: RateLimitBackendFactory | None = None,
+) -> FastAPI:
     resolved_settings = settings or get_settings()
     configure_logging(resolved_settings.log_level)
 
@@ -90,6 +142,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = resolved_settings
+    application.state.rate_limit_backend_factory = (
+        rate_limit_backend_factory or default_rate_limit_backend_factory
+    )
     application.add_middleware(
         RequestBodyLimitMiddleware,
         max_request_body_bytes=resolved_settings.max_request_body_bytes,
@@ -106,20 +161,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context_token = request_id_context.set(request_id)
         response: Response
         try:
+            rate_limit_decision: RateLimitDecision | None = None
             if request.url.path not in {"/api/v1/health", "/api/v1/ready"}:
                 client_host = request.client.host if request.client else "unknown"
-                limiter = (
-                    request.app.state.auth_rate_limiter
-                    if request.url.path.startswith("/api/v1/auth/")
-                    else request.app.state.rate_limiter
+                rate_limit_service: RateLimitService = request.app.state.rate_limit_service
+                rate_limit_decision = await rate_limit_service.check(
+                    policy=rate_limit_policy_for_request(request, resolved_settings),
+                    key=client_host,
                 )
-                if not await limiter.allow(client_host):
-                    response = error_response(
-                        request,
-                        code="RATE_LIMITED",
-                        message="Too many requests. Please try again shortly.",
-                        status_code=429,
-                    )
+                if not rate_limit_decision.allowed:
+                    if rate_limit_decision.backend_available:
+                        response = error_response(
+                            request,
+                            code="RATE_LIMITED",
+                            message="Too many requests. Please try again shortly.",
+                            status_code=429,
+                        )
+                    else:
+                        response = error_response(
+                            request,
+                            code="RATE_LIMIT_UNAVAILABLE",
+                            message=(
+                                "This service is temporarily unavailable. Please try again shortly."
+                            ),
+                            status_code=503,
+                        )
                 else:
                     response = await call_next(request)
             else:
@@ -141,6 +207,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             request_id_context.reset(context_token)
 
         response.headers["X-Request-ID"] = request_id
+        if rate_limit_decision is not None:
+            add_rate_limit_headers(response, rate_limit_decision)
         add_security_headers(response, resolved_settings)
         return response
 
