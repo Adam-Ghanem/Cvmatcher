@@ -181,3 +181,20 @@ Analysis-history responses use keyset pagination ordered by `createdAt` and anal
 ## Deliberate boundaries
 
 The implemented API does not call an LLM, use semantic retrieval, infer qualifications, generate recommendations, modify source CVs or target roles, serve document bytes, add billing, run a background queue, or expose raw private CV/job text. These are intentional security and product boundaries, not hidden behavior.
+
+
+## Deterministic action plans
+
+Action plans are an analysis-scoped private subresource. The API derives every generated action from the persisted analysis result; it accepts no CV text, job description, requirement ID, evidence, title, description, category, priority, or position from the browser.
+
+| Method | Path | Behavior |
+|---|---|---|
+| `GET` | `/api/v1/match-analyses/{analysisId}/actions?limit=20&cursor={actionId}` | Returns the caller's paginated action metadata ordered by deterministic position and ID. |
+| `POST` | `/api/v1/match-analyses/{analysisId}/actions` | Requires CSRF and creates any missing deterministic actions. The strict request body is `{}`. |
+| `PATCH` | `/api/v1/match-analyses/{analysisId}/actions/{actionId}` | Requires CSRF and accepts only `{ "status": "todo" | "in_progress" | "completed" }`. |
+
+Only persisted `deterministic-v3` requirements with `NOT_FOUND_IN_PROVIDED_CV` evidence produce actions. The server assigns action priority as category base plus stored requirement priority: `must-have` is `200 + priority`, `should-have` is `100 + priority`, and `nice-to-have` is `priority`. Actions sort by descending priority, then stable requirement UUID. This is a priority ordering rule, not a new match-scoring formula.
+
+A generated action contains only an opaque action UUID, optional existing requirement UUID, safe template title/description based on the normalized skill, category, computed priority, evidence state, status, position, and timestamps. It does not include raw CV text, raw target text, raw requirement/source-reference text, analysis JSON, storage identifiers, or filesystem details. An unmatched requirement action says that evidence was not found in the provided CV and directs a user to add only truthful, verifiable evidence if applicable.
+
+Generation locks the owned analysis and is idempotent through the unique `(analysis_id, requirement_id)` constraint. Repeating generation for unchanged analysis content returns the existing action plan and preserves user-managed statuses. A later requirement change creates a new v3 analysis with its own plan; earlier persisted analysis actions are not mutated. V2 analyses return an empty plan. Missing or cross-user analysis/action/cursor references return `404 RESOURCE_NOT_FOUND`.

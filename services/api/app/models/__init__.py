@@ -1,3 +1,4 @@
+from app.models.analysis_action import AnalysisAction
 from app.models.audit_event import AuditEvent
 from app.models.cv_document import CvDocument, CvDocumentVersion
 from app.models.cv_extraction import CvExtraction
@@ -9,6 +10,7 @@ from app.models.user import User
 from app.models.user_session import UserSession
 
 __all__ = [
+    "AnalysisAction",
     "AuditEvent",
     "CvDocument",
     "CvDocumentVersion",

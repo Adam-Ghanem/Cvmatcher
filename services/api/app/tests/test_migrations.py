@@ -19,6 +19,7 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
             "job_targets",
             "job_requirements",
             "match_analyses",
+            "analysis_actions",
         }.issubset(tables)
 
         credential_columns = {
@@ -49,6 +50,20 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
         job_requirement_indexes = {
             index["name"] for index in inspector.get_indexes("job_requirements")
         }
+        analysis_action_columns = {
+            column["name"] for column in inspector.get_columns("analysis_actions")
+        }
+        analysis_action_constraints = {
+            constraint["name"] for constraint in inspector.get_check_constraints("analysis_actions")
+        }
+        analysis_action_indexes = {
+            index["name"] for index in inspector.get_indexes("analysis_actions")
+        }
+        analysis_action_unique_constraints = {
+            constraint["name"]
+            for constraint in inspector.get_unique_constraints("analysis_actions")
+        }
+        analysis_action_foreign_keys = inspector.get_foreign_keys("analysis_actions")
         match_analysis_columns = {
             column["name"] for column in inspector.get_columns("match_analyses")
         }
@@ -106,6 +121,31 @@ def test_migrations_create_secure_identity_document_and_extraction_tables() -> N
             "ck_job_requirement_review_state",
         }.issubset(job_requirement_constraints)
         assert "ix_job_requirements_target_priority_created_id" in job_requirement_indexes
+        assert {
+            "user_id",
+            "analysis_id",
+            "requirement_id",
+            "title",
+            "description",
+            "priority",
+            "category",
+            "evidence_state",
+            "status",
+            "position",
+        }.issubset(analysis_action_columns)
+        assert {
+            "ck_analysis_action_category",
+            "ck_analysis_action_priority_range",
+            "ck_analysis_action_position_positive",
+            "ck_analysis_action_status",
+        }.issubset(analysis_action_constraints)
+        assert "uq_analysis_action_analysis_requirement" in analysis_action_unique_constraints
+        assert "ix_analysis_actions_analysis_position_id" in analysis_action_indexes
+        assert any(
+            foreign_key["referred_table"] == "match_analyses"
+            and foreign_key["options"].get("ondelete") == "CASCADE"
+            for foreign_key in analysis_action_foreign_keys
+        )
         assert {
             "user_id",
             "cv_document_version_id",
